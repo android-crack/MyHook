@@ -7,7 +7,7 @@
 
 
 //指明要hook的lib
-//MSConfig(MSFilterLibrary, "/system/lib/libc.so")
+//MSConfig(MSFilterLibrary, "/data/app-lib/com.ztgame.jielan-1/libmain.so")
 MSConfig(MSFilterExecutable, "/system/bin/app_process")
 
 void *g_handlelibMonoSo;
@@ -41,26 +41,24 @@ void *my_mono_image_open_from_data_full(char *data, unsigned int data_len, int n
 
 void* (*olddlopen)(const char* filename, int myflags) = NULL;
 
+//void* newdlopen(const char* filename, int myflags) {
+//    LOGD("The dlopen name: %s\n", filename);
+//
+//    return olddlopen(filename, myflags);
+//}
+
 void* newdlopen(const char* filename, int myflags) {
-    LOGD("The dlopen name: %s\n", filename);
+    LOGD("the dlopen name =: %s",filename);
     void *handle = olddlopen(filename, myflags);
 
-    if( strcmp(filename, "libmono.so"))
-    return olddlopen(filename, myflags);
-}
-
-//void* newdlopen(const char* filename, int myflags) {
-//    LOGD("the dlopen name =: %s",filename);
-//    void *handle = olddlopen(filename, myflags);
-//
-//    if ( strcmp(filename, "libmono.so") == 0){
-//        if (g_bU3dHooked == false) {
-//            // hook libmono.so
-//            g_handlelibMonoSo = handle;
-//            LOGD("[xxoo] hook libmono.so\n");
-//            g_bU3dHooked = hookU3D();
-//        }
-//    }
+    if ( strcmp(filename, "libmono.so") == 0){
+        if (g_bU3dHooked == false) {
+            // hook libmono.so
+            g_handlelibMonoSo = handle;
+            LOGD("[xxoo] hook libmono.so\n");
+            g_bU3dHooked = hookU3D();
+        }
+    }
 
 //    if ( strcmp(filename, "libmono.so")==0 ) {
 //        if ( g_bU3dHooked==false ) {
@@ -76,12 +74,13 @@ void* newdlopen(const char* filename, int myflags) {
 //            g_bCocosHooked = hookCocos();
 //        }
 //    }
-//    return handle;
-//}
+    return handle;
+}
 
 
 
 bool hookU3D() {
+    LOGD("Call hookU3D.\n");
     void *handle = NULL;
     if ( g_handlelibMonoSo==NULL ) {
         if ( olddlopen==NULL ) {
