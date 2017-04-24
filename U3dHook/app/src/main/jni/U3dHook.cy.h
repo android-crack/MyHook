@@ -23,11 +23,26 @@
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
 struct _MonoImage {
-    int ret_count;
+    /*
+     * The number of assemblies which reference this MonoImage though their 'image'
+     * field plus the number of images which reference this MonoImage through their
+     * 'modules' field, plus the number of threads holding temporary references to
+     * this image between calls of mono_image_open () and mono_image_close ().
+     */
+    int   ref_count;
     void *raw_data_handle;
     char *raw_data;
     int raw_data_len;
 };
+
+typedef enum {
+    MONO_IMAGE_OK,
+    MONO_IMAGE_ERROR_ERRNO,
+    MONO_IMAGE_MISSING_ASSEMBLYREF,
+    MONO_IMAGE_IMAGE_INVALID
+} MonoImageOpenStatus;
+
+typedef int gboolean;
 
 void* get_module_base(int pid, const char* module_name);
 void* get_remote_addr(int target_pid, const char* module_name, void* local_addr);

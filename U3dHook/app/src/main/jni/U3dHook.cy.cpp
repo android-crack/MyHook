@@ -5,6 +5,9 @@
 #include "linker.h"
 #include "U3dHook.cy.h"
 
+void *g_handlelibMonoSo;
+bool g_bU3dHooked = false;
+
 //这个方法来自 android inject 用于获取地址
 void* get_module_base(int pid, const char* module_name)
 {
@@ -59,22 +62,32 @@ void* get_remote_addr(int target_pid, const char* module_name, void* local_addr)
 
 MSConfig(MSFilterLibrary, "/system/lib/libdvm.so")
 
-void* (* old_mono_image_open_from_data_with_name)(char *data, int data_len, bool need_copy, void *status, bool refonly, const char *name);
-void* my_mono_image_open_from_data_with_name(char *data, int data_len, bool need_copy, void *status, bool refonly, const char *name)
-{
-	char* p = strrchr(name, '/')+1;
-	mode_t old_mode = umask(0);
-	char file_name[256];
-	sprintf(file_name, "/data/local/tmp/%s", p);
-	int fd = open(file_name, O_RDWR|O_CREAT, S_IRWXU|S_IRWXG|S_IRWXO);
-	if(fd) {
-		write(fd, data, data_len);
-		close(fd);
-	}
-	umask(old_mode);
+//void* (* old_mono_image_open_from_data_with_name)(char *data, int data_len, bool need_copy, void *status, bool refonly, const char *name);
+//void* (* old_mono_image_open_from_data_with_name)(int arg0, int arg1, int arg2, int arg3); // hook animal
+void* (* old_mono_image_open_from_data_with_name)(int offset, char *data_len, int a3, int a4, char refonly, const char *name); // hook jielan
 
-	void *ret = old_mono_image_open_from_data_with_name(data, data_len, need_copy, status, refonly, name);
-	LOGD("Into : my_mono_image_open_from_data_with_name, name = %s", name);
+//void* my_mono_image_open_from_data_with_name(char *data, int data_len, bool need_copy, void *status, bool refonly, const char *name)
+//void* my_mono_image_open_from_data_with_name(int arg0, int arg1, int arg2, int arg3) // hook animal
+ void* my_mono_image_open_from_data_with_name(int offset, char *data_len, int a3, int a4, char refonly,const char *name)
+{
+//	char* p = strrchr(name, '/')+1;
+//	mode_t old_mode = umask(0);
+//	char file_name[256];
+//	sprintf(file_name, "/data/local/tmp/%s", p);
+//	int fd = open(file_name, O_RDWR|O_CREAT, S_IRWXU|S_IRWXG|S_IRWXO);
+//	if(fd) {
+//		write(fd, data, data_len);
+//		close(fd);
+//	}
+//	umask(old_mode);
+
+	//void *ret = old_mono_image_open_from_data_with_name(data, data_len, need_copy, status, refonly, name);
+	//void *ret = old_mono_image_open_from_data_with_name(arg0, arg1, arg2, arg3); //hook animal
+	//LOGD("Into : my_mono_image_open_from_data_with_name, name = %d, arg1 = %d, arg2 = %d, arg3 = %d\n", arg0, arg1, arg2, arg3);
+
+    LOGD("Info: image name is %s, data offset is %d, data len is %s.\n", name, offset, data_len); // hook jielan
+    void *ret = old_mono_image_open_from_data_with_name(offset, data_len, a3, a4, refonly, name); //hook jielan
+
 	return ret;
 }
 
@@ -109,6 +122,7 @@ void* newdlopen(const char* filename, int myflags) {
 	}
 	return handle;
 }
+
 
 MSInitialize {
 	//声明各个变量存放地址
