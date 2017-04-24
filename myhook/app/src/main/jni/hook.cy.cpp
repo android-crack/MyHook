@@ -5,15 +5,17 @@
 #include "substrate.h"
 #include "hook.cy.h"
 
+#define LIB "/data/app-lib/com.ztgame.jielan-1/libmono.so"
 
 //指明要hook的lib
-//MSConfig(MSFilterLibrary, "/data/app-lib/com.ztgame.jielan-1/libmain.so")
+//MSConfig(MSFilterLibrary, "/data/app-lib/com.ztgame.jielan-1/libmono.so")
 MSConfig(MSFilterExecutable, "/system/bin/app_process")
 
 void *g_handlelibMonoSo;
 //void *g_handlelibGameSo;
 bool g_bU3dHooked = false;
 //bool g_bCocosHooked;
+
 
 //hook方法
 //void* (*olddlsym)(void*  handle, const char*  symbol);
@@ -22,20 +24,24 @@ bool g_bU3dHooked = false;
 //    return olddlsym(handle, symbol);
 //}
 
-void *(*orig_mono_image_open)(char *data, unsigned int data_len, int need_copy, MonoImageOpenStatus *status, int refonly,const char *name);
 
-void *my_mono_image_open_from_data_full(char *data, unsigned int data_len, int need_copy, MonoImageOpenStatus *status, int refonly, const char *name){
+void *(*mono_image_open_from_data_with_name_orig)(int offset, char *data_len, int a3, int a4, char refonly,const char *name);
+
+void *mono_image_open_from_data_with_name_mod(int offset, char *data_len, int a3, int a4, char refonly,const char *name){
+
+    LOGD("Call my image open function.\n");
 
     if(name != NULL){
-        char *tmp = strstr(name,".dll");
-        if (tmp != NULL && strcmp(tmp,".dll")== 0){
-            if(data[0] == 'M' && data[1] == 'Z'){
-                LOGD("Open dll %s, data len %d\n", data, data_len);
-            }
-        }
+        LOGD("Open dll name is %s, data offset is %d, data len %d\n", name, offset, data_len);
+//        char *tmp = strstr(name,".dll");
+//        if (tmp != NULL && strcmp(tmp,".dll")== 0){
+//            if(data[0] == 'M' && data[1] == 'Z'){
+//                LOGD("Open dll %s, data len %d\n", data, data_len);
+//            }
+//        }
     }
 
-    void *res = orig_mono_image_open(data, data_len, need_copy, status, refonly, name);
+    void *res = mono_image_open_from_data_with_name_orig(offset, data_len, a3, a4, refonly, name);
     return res;
 }
 
@@ -50,8 +56,9 @@ void* (*olddlopen)(const char* filename, int myflags) = NULL;
 void* newdlopen(const char* filename, int myflags) {
     LOGD("the dlopen name =: %s",filename);
     void *handle = olddlopen(filename, myflags);
+    LOGD("Call newdlopen.\n");
 
-    if ( strcmp(filename, "libmono.so") == 0){
+    if ( strcmp(filename, "/data/app-lib/com.ztgame.jielan-1/libmono.so") == 0){
         if (g_bU3dHooked == false) {
             // hook libmono.so
             g_handlelibMonoSo = handle;
@@ -77,25 +84,46 @@ void* newdlopen(const char* filename, int myflags) {
     return handle;
 }
 
+void* loadLib(char* libraryName, char* funcName)
+{
+    void *handle = dlopen(libraryName, RTLD_NOW | RTLD_GLOBAL);
+
+    if(handle != NULL)
+    {
+
+        LOGD("dlopen %s successfully!\n", LIB);
+        void *sym = dlsym(handle, funcName);
+        if(sym){
+            return sym;
+        } else {
+            LOGE("find symbol error!\n");
+            return NULL;
+        }
+    } else{
+        LOGE("dlopen %s error!\n", LIB);
+        return NULL;
+    }
+}
 
 
 bool hookU3D() {
-    LOGD("Call hookU3D.\n");
     void *handle = NULL;
-    if ( g_handlelibMonoSo==NULL ) {
-        if ( olddlopen==NULL ) {
-            handle = dlopen("libmono.so", RTLD_NOW);
-        }else{
-            handle = olddlopen("libmono.so", RTLD_NOW);
-        }
-        if (handle == NULL) {
-            LOGE("[dumplua]dlopen err: %s.", dlerror());
-            return false;
-        }
-    }else{
-        handle = g_handlelibMonoSo;
-        LOGD("[dumplua] libmono.so handle: %p", handle);
-    }
+//    if ( g_handlelibMonoSo==NULL ) {
+//        if ( olddlopen==NULL ) {
+//            handle = dlopen("libmono.so", RTLD_NOW);
+//        }else{
+//            handle = olddlopen("libmono.so", RTLD_NOW);
+//        }
+//        if (handle == NULL) {
+//            LOGE("[dumplua]dlopen err: %s.", dlerror());
+//            return false;
+//        }
+//    }else{
+//        handle = g_handlelibMonoSo;
+//        LOGD("[dumplua] libmono.so handle: %p", handle);
+//    }
+
+    handle = dlopen(LIB, RTLD_NOW);
 
     void *mono_image_open_from_data_with_name = dlsym(handle, "mono_image_open_from_data_with_name");
     if (mono_image_open_from_data_with_name == NULL){
@@ -103,7 +131,7 @@ bool hookU3D() {
         LOGE("[dumplua] dlsym err: %s.", dlerror());
     }else{
         LOGD("[dumplua] mono_image_open_from_data_with_name found: %p", mono_image_open_from_data_with_name);
-        MSHookFunction(mono_image_open_from_data_with_name, (void *)&my_mono_image_open_from_data_full, (void **)&orig_mono_image_open);
+        MSHookFunction(mono_image_open_from_data_with_name, (void *)&mono_image_open_from_data_with_name_mod, (void **)&mono_image_open_from_data_with_name_orig);
     }
 
     return true;
@@ -165,6 +193,8 @@ void* get_remote_addr(int target_pid, const char* module_name, void* local_addr)
 
 void my_hook() {
 
+    LOGD("Call my_hook function!\n");
+
     //声明各个变量存放的地址
     void *dlopen_addr;
 
@@ -186,6 +216,37 @@ MSInitialize
     // Let the user know that the extension has been
     // extension has been registered
     LOGI( "MyHook Substrate initialized.\n");
-    my_hook();
+
+    void *getSym = loadLib(LIB, "mono_jit_stats");
+
+    if(getSym){
+        //LOGD("Call my_hook function.\n");
+        //my_hook();
+        hookU3D();
+    }
+    else {
+        LOGE("Get sym error!\n");
+    }
+
+
+//    MSImageRef image;
+//    image = MSGetImageByName("/system/lib/libdvm.so");
+//    if(image != NULL)
+//    {
+//        LOGD("dvm image: 0x%08x", (void *)image);
+//        void * dvmload = MSFindSymbol(image, "_Z17dvmLoadNativeCodePKcP6ObjectPPc");
+//        if(dvmload == NULL)
+//        {
+//            LOGD("error find dvmLoadNativeCode.");
+//        }
+//        else
+//        {
+//            MSHookFunction(dvmload,(void*)&fake_dvmLoadNativeCode,(void **)&_dvmLoadNativeCode);
+//            LOGD("hook dvmLoadNativeCode sucess.");
+//        }
+//    }
+//    else{
+//        LOGD("can not find libdvm.");
+//    }
 
 }
