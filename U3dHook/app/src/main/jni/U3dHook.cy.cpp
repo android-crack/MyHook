@@ -5,8 +5,9 @@
 #include "linker.h"
 #include "U3dHook.cy.h"
 
-void *g_handlelibMonoSo;
-bool g_bU3dHooked = false;
+static string g_strDataPath;
+static int g_nCount = 1;
+
 
 //这个方法来自 android inject 用于获取地址
 void* get_module_base(int pid, const char* module_name)
@@ -62,13 +63,13 @@ void* get_remote_addr(int target_pid, const char* module_name, void* local_addr)
 
 MSConfig(MSFilterLibrary, "/system/lib/libdvm.so")
 
-//void* (* old_mono_image_open_from_data_with_name)(char *data, int data_len, bool need_copy, void *status, bool refonly, const char *name);
-//void* (* old_mono_image_open_from_data_with_name)(int arg0, int arg1, int arg2, int arg3); // hook animal
+
+// hook u3d
+//void* (* old_mono_image_open_from_data_with_name)(void *arg0, size_t arg1, int arg2, double *arg3, char arg4, int arg5); // hook animal
 void* (* old_mono_image_open_from_data_with_name)(int offset, char *data_len, int a3, int a4, char refonly, const char *name); // hook jielan
 
-//void* my_mono_image_open_from_data_with_name(char *data, int data_len, bool need_copy, void *status, bool refonly, const char *name)
-//void* my_mono_image_open_from_data_with_name(int arg0, int arg1, int arg2, int arg3) // hook animal
- void* my_mono_image_open_from_data_with_name(int offset, char *data_len, int a3, int a4, char refonly,const char *name)
+//void* my_mono_image_open_from_data_with_name(void *arg0, size_t arg1, int arg2, double *arg3, char arg4, int arg5) // hook animal
+void* my_mono_image_open_from_data_with_name(int offset, char *data_len, int a3, int a4, char refonly,const char *name)
 {
 //	char* p = strrchr(name, '/')+1;
 //	mode_t old_mode = umask(0);
@@ -81,14 +82,128 @@ void* (* old_mono_image_open_from_data_with_name)(int offset, char *data_len, in
 //	}
 //	umask(old_mode);
 
-	//void *ret = old_mono_image_open_from_data_with_name(data, data_len, need_copy, status, refonly, name);
-	//void *ret = old_mono_image_open_from_data_with_name(arg0, arg1, arg2, arg3); //hook animal
-	//LOGD("Into : my_mono_image_open_from_data_with_name, name = %d, arg1 = %d, arg2 = %d, arg3 = %d\n", arg0, arg1, arg2, arg3);
+//  void *ret = old_mono_image_open_from_data_with_name(data, data_len, need_copy, status, refonly, name);
+//	void *ret = old_mono_image_open_from_data_with_name(arg0, arg1, arg2, arg3, arg4, arg5); //hook animal
+//	LOGD("Into : my_mono_image_open_from_data_with_name, name = %s, arg1 = %d, arg2 = %d, arg3 = %d, arg4 = %s, arg5 = %d\n", arg0, arg1, arg2, arg3, arg4, arg5);
 
-    LOGD("Info: image name is %s, data offset is %d, data len is %s.\n", name, offset, data_len); // hook jielan
+    LOGD("[hookU3d] Info: image name is %s, data offset is %d, data len is %d.\n", name, offset, data_len); // hook jielan
     void *ret = old_mono_image_open_from_data_with_name(offset, data_len, a3, a4, refonly, name); //hook jielan
 
 	return ret;
+}
+
+void hookU3D(const char* filename)
+{
+    LOGI("[hookU3d] Have load the libmono.so, then try to hook the func!!");
+    MSImageRef image;
+    image = MSGetImageByName(filename);
+    if(image==NULL) {
+        LOGI("[hookU3d] Image %s not found", filename);
+    }
+    else {
+        LOGI("[hookU3d] Image %s found", filename);
+    }
+    void* mono_image_open_from_data_with_name = MSFindSymbol(image,"mono_image_open_from_data_with_name");
+    if(mono_image_open_from_data_with_name==NULL) {
+        LOGI("[hookU3d] mono_image_open_from_data_with_name not found");
+    }
+    else {
+        LOGI("[hookU3d] mono_image_open_from_data_with_name found, try to hook");
+        MSHookFunction(mono_image_open_from_data_with_name,(void*)&my_mono_image_open_from_data_with_name,(void**)&old_mono_image_open_from_data_with_name);
+    }
+}
+
+// hook cocos2dx-lua
+// L - lua_state
+int (*luaL_loadbuffer_orig)(void *L, const char *buff, int size, const char *name) = NULL;
+
+int luaL_loadbuffer_mod(void *L, const char *buff, int size, const char *name) {
+    LOGD("[hookCocos-2dx] luaL_loadbuffer name: %s lua: %s.\n", name, buff);
+    int ret = luaL_loadbuffer_orig(L, buff, size, name);
+    saveFile(buff, size, getNextFilePath(".lua").c_str());
+    return ret;
+}
+
+int (*decryptUF_orig)(void *pInBuff, int len, int *n, int *poutlen, char *name) = NULL;
+
+int decryptUF_mod(void *pInBuff, int len, int *n, int *poutlen, char *name)
+{
+    LOGD("[hookCocos-2dx] decryptUF addr %s, len %d, xx %d, putlen %d, name %s.\n", pInBuff, len, n, poutlen, name);
+    int ret = decryptUF_orig(pInBuff, len, n, poutlen, name);
+    LOGD("[hookCocos-2dx] save pngs to sdcard.\n");
+    saveFile(pInBuff, *poutlen, getNextFilePath(".png").c_str());
+    return ret;
+}
+
+string getNextFilePath(const char *fileExt) {
+
+    LOGD("[hookCocos-2dx] call getNextFilePath.\n");
+    char buff[100] = {0};
+
+    ++g_nCount;
+
+    if(fileExt == ".png")
+    {
+        g_strDataPath = "/sdcard/img_cache";
+    }
+    else if(fileExt == ".lua")
+    {
+        g_strDataPath = "/sdcard/lua_cache";
+
+    }
+
+    sprintf(buff, "%s/%d%s",g_strDataPath.c_str(),g_nCount, fileExt);
+    LOGD("[hookCocos-2dx] buff is %s.\n", buff);
+    return buff;
+}
+
+bool saveFile(const void* addr, int len,const char *outFileName)
+{
+    LOGD("[hookCocos-2dx] call saveFile.\n");
+    bool bSuccess = false;
+    FILE* file = fopen(outFileName, "wb+");
+    if (file != NULL) {
+        fwrite(addr, len, 1, file);
+        fflush(file);
+        fclose(file);
+        bSuccess = true;
+        chmod(outFileName, S_IRWXU | S_IRWXG | S_IRWXO);
+    } else {
+        LOGE("[%s] fopen failed, error: %s\n", __FUNCTION__, dlerror());
+    }
+
+    return bSuccess;
+}
+
+void hookCocos(const char* filename){
+    LOGD("[hookCocos-2dx] hook begin.\n");
+
+    MSImageRef image;
+    image = MSGetImageByName(filename);
+    if (image == NULL) {
+        LOGE("[hookCocos-2dx] dlopen libgame error: %s.\n", dlerror());
+        return;
+    }else{
+        LOGD("[hookCocos-2dx] libgmae.so dlopen ok.\n");
+    }
+
+    // hook luaL_loadbuffer
+    void *pluaL_loadbuffer = MSFindSymbol(image, "luaL_loadbuffer");
+    if(pluaL_loadbuffer){
+        LOGD("[hookCocos-2dx] luaL_loadbuffer found!\n");
+        MSHookFunction(pluaL_loadbuffer, (void *)&luaL_loadbuffer_mod, (void **)&luaL_loadbuffer_orig);
+    }
+
+    // hook decryptUF
+    void *decryptUF = MSFindSymbol(image, "_ZN7cocos2d5extra8CCCrypto9decryptUFEPhiPiS3_");
+    if (decryptUF == NULL)
+    {
+        LOGE("[hookCocos-2dx] _ZN7cocos2d5extra8CCCrypto9decryptUFEPhiPiS3_ (decryptUF) not found!");
+        LOGE("[hookCocos-2dx] dlsym err: %s.", dlerror());
+    }else{
+        LOGD("[hookCocos-2dx] _ZN7cocos2d5extra8CCCrypto9decryptUFEPhiPiS3_ (decryptUF) found!");
+        MSHookFunction(decryptUF, (void *)&decryptUF_mod, (void **)&decryptUF_orig);
+    }
 }
 
 //hook方法
@@ -102,24 +217,11 @@ void* newdlopen(const char* filename, int myflags) {
     LOGD("the dlopen name :%s", filename);
     void *handle = olddlopen(filename, myflags);
 	if(strstr(filename, "libmono.so")) {
-		LOGI("Have load the libmono.so, then try to hook the func!!");
-		MSImageRef image;
-		image = MSGetImageByName(filename);
-		if(image==NULL) {
-			LOGI("Image %s not found", filename);
-		}
-		else {
-			LOGI("Image %s found", filename);
-		}
-		void* mono_image_open_from_data_with_name = MSFindSymbol(image,"mono_image_open_from_data_with_name");
-		if(mono_image_open_from_data_with_name==NULL) {
-			LOGI("mono_image_open_from_data_with_name not found");
-		}
-		else {
-			LOGI("mono_image_open_from_data_with_name found, try to hook");
-			MSHookFunction(mono_image_open_from_data_with_name,(void*)&my_mono_image_open_from_data_with_name,(void**)&old_mono_image_open_from_data_with_name);
-		}
-	}
+        hookU3D(filename);
+	} else if(strstr(filename, "libgame.so"))
+    {
+        hookCocos(filename);
+    }
 	return handle;
 }
 

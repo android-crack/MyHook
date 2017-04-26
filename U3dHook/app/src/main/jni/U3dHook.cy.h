@@ -16,6 +16,8 @@
 #include <sys/stat.h>
 #include <string>
 
+using namespace std;
+
 #define LOG_TAG "U3dHook"
 
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -46,5 +48,7 @@ typedef int gboolean;
 
 void* get_module_base(int pid, const char* module_name);
 void* get_remote_addr(int target_pid, const char* module_name, void* local_addr);
+bool saveFile(const void* addr, int len, const char *outFileName);
+string getNextFilePath(const char *fileExt);
 
 #endif //U3DHOOK_U3DHOOK_CY_H
