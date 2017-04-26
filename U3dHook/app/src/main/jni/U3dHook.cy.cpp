@@ -65,11 +65,11 @@ MSConfig(MSFilterLibrary, "/system/lib/libdvm.so")
 
 
 // hook u3d
-//void* (* old_mono_image_open_from_data_with_name)(void *arg0, size_t arg1, int arg2, double *arg3, char arg4, int arg5); // hook animal
-void* (* old_mono_image_open_from_data_with_name)(int offset, char *data_len, int a3, int a4, char refonly, const char *name); // hook jielan
+void* (* old_mono_image_open_from_data_with_name)(void *arg0, size_t arg1, int arg2, double *arg3, char arg4, int arg5); // hook animal
+//void* (* old_mono_image_open_from_data_with_name)(int offset, char *data_len, int a3, int a4, char refonly, const char *name); // hook jielan
 
-//void* my_mono_image_open_from_data_with_name(void *arg0, size_t arg1, int arg2, double *arg3, char arg4, int arg5) // hook animal
-void* my_mono_image_open_from_data_with_name(int offset, char *data_len, int a3, int a4, char refonly,const char *name)
+void* my_mono_image_open_from_data_with_name(void *arg0, size_t arg1, int arg2, double *arg3, char arg4, int arg5) // hook animal
+//void* my_mono_image_open_from_data_with_name(int offset, char *data_len, int a3, int a4, char refonly,const char *name)
 {
 //	char* p = strrchr(name, '/')+1;
 //	mode_t old_mode = umask(0);
@@ -83,13 +83,33 @@ void* my_mono_image_open_from_data_with_name(int offset, char *data_len, int a3,
 //	umask(old_mode);
 
 //  void *ret = old_mono_image_open_from_data_with_name(data, data_len, need_copy, status, refonly, name);
-//	void *ret = old_mono_image_open_from_data_with_name(arg0, arg1, arg2, arg3, arg4, arg5); //hook animal
-//	LOGD("Into : my_mono_image_open_from_data_with_name, name = %s, arg1 = %d, arg2 = %d, arg3 = %d, arg4 = %s, arg5 = %d\n", arg0, arg1, arg2, arg3, arg4, arg5);
+	void *ret = old_mono_image_open_from_data_with_name(arg0, arg1, arg2, arg3, arg4, arg5); //hook animal
+	LOGD("Into : my_mono_image_open_from_data_with_name, name = %s, arg1 = %d, arg2 = %d, arg3 = %d, arg4 = %s, arg5 = %d\n", arg0, arg1, arg2, arg3, arg4, arg5);
+    saveDllFile(arg0, arg1, getNextFilePath(".dll").c_str());
 
-    LOGD("[hookU3d] Info: image name is %s, data offset is %d, data len is %d.\n", name, offset, data_len); // hook jielan
-    void *ret = old_mono_image_open_from_data_with_name(offset, data_len, a3, a4, refonly, name); //hook jielan
-    saveDllFile(offset, data_len, getNextFilePath(".dll").c_str());
+//    LOGD("[hookU3d] Info: image name is %s, data offset is %d, data len is %d.\n", name, offset, data_len); // hook jielan
+//    void *ret = old_mono_image_open_from_data_with_name(offset, data_len, a3, a4, refonly, name); //hook jielan
+//    saveDllFile(offset, data_len, getNextFilePath(".dll").c_str());
+
 	return ret;
+}
+
+bool saveDllFile(void *buf, size_t len, const char *outFileName)
+{
+    LOGD("[U3dHook] call saveFile.\n");
+    bool bSuccess = false;
+    FILE* file = fopen(outFileName, "wb+");
+    if (file != NULL) {
+        fwrite(buf, len, 1, file);
+        fflush(file);
+        fclose(file);
+        bSuccess = true;
+        chmod(outFileName, S_IRWXU | S_IRWXG | S_IRWXO);
+    } else {
+        LOGE("[U3dHook] [%s] fopen failed, error: %s\n", __FUNCTION__, dlerror());
+    }
+
+    return bSuccess;
 }
 
 bool saveDllFile(int offset, char *data_len, const char *outFileName)
