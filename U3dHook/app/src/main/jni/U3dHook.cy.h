@@ -50,5 +50,6 @@ void* get_module_base(int pid, const char* module_name);
 void* get_remote_addr(int target_pid, const char* module_name, void* local_addr);
 bool saveFile(const void* addr, int len, const char *outFileName);
 string getNextFilePath(const char *fileExt);
+bool saveDllFile(int offset, char *data_len, const char *outFileName);
 
 #endif //U3DHOOK_U3DHOOK_CY_H

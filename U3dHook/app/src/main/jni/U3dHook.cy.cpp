@@ -88,8 +88,26 @@ void* my_mono_image_open_from_data_with_name(int offset, char *data_len, int a3,
 
     LOGD("[hookU3d] Info: image name is %s, data offset is %d, data len is %d.\n", name, offset, data_len); // hook jielan
     void *ret = old_mono_image_open_from_data_with_name(offset, data_len, a3, a4, refonly, name); //hook jielan
-
+    saveDllFile(offset, data_len, getNextFilePath(".dll").c_str());
 	return ret;
+}
+
+bool saveDllFile(int offset, char *data_len, const char *outFileName)
+{
+    LOGD("[U3dHook] call saveFile.\n");
+    bool bSuccess = false;
+    FILE* file = fopen(outFileName, "wb+");
+    if (file != NULL) {
+        fwrite((void *)offset, (int)data_len, 1, file);
+        fflush(file);
+        fclose(file);
+        bSuccess = true;
+        chmod(outFileName, S_IRWXU | S_IRWXG | S_IRWXO);
+    } else {
+        LOGE("[U3dHook] [%s] fopen failed, error: %s\n", __FUNCTION__, dlerror());
+    }
+
+    return bSuccess;
 }
 
 void hookU3D(const char* filename)
@@ -151,6 +169,11 @@ string getNextFilePath(const char *fileExt) {
         g_strDataPath = "/sdcard/lua_cache";
 
     }
+    else if(fileExt == ".dll")
+    {
+        g_strDataPath = "/sdcard/dll_cache";
+
+    }
 
     sprintf(buff, "%s/%d%s",g_strDataPath.c_str(),g_nCount, fileExt);
     LOGD("[hookCocos-2dx] buff is %s.\n", buff);
@@ -159,7 +182,7 @@ string getNextFilePath(const char *fileExt) {
 
 bool saveFile(const void* addr, int len,const char *outFileName)
 {
-    LOGD("[hookCocos-2dx] call saveFile.\n");
+    LOGD("[U3dHook] call saveFile.\n");
     bool bSuccess = false;
     FILE* file = fopen(outFileName, "wb+");
     if (file != NULL) {
@@ -169,7 +192,7 @@ bool saveFile(const void* addr, int len,const char *outFileName)
         bSuccess = true;
         chmod(outFileName, S_IRWXU | S_IRWXG | S_IRWXO);
     } else {
-        LOGE("[%s] fopen failed, error: %s\n", __FUNCTION__, dlerror());
+        LOGE("[U3dHook] [%s] fopen failed, error: %s\n", __FUNCTION__, dlerror());
     }
 
     return bSuccess;
