@@ -65,11 +65,13 @@ MSConfig(MSFilterLibrary, "/system/lib/libdvm.so")
 
 
 // hook u3d
-void* (* old_mono_image_open_from_data_with_name)(void *arg0, size_t arg1, int arg2, double *arg3, char arg4, int arg5); // hook animal
-//void* (* old_mono_image_open_from_data_with_name)(int offset, char *data_len, int a3, int a4, char refonly, const char *name); // hook jielan
+//void* (* old_mono_image_open_from_data_with_name)(void *arg0, size_t arg1, int arg2, double *arg3, char arg4, int arg5); // hook animal
 
-void* my_mono_image_open_from_data_with_name(void *arg0, size_t arg1, int arg2, double *arg3, char arg4, int arg5) // hook animal
-//void* my_mono_image_open_from_data_with_name(int offset, char *data_len, int a3, int a4, char refonly,const char *name)
+//void* (* old_mono_image_open_from_data_with_name)(int *offset, char *data_len, int a3, int a4, char refonly, const char *name); // hook jielan
+void* (* old_mono_image_open_from_data_with_name)(int8_t *data, int32_t *data_len, gboolean need_copy, MonoImageOpenStatus *status, gboolean refonly,int8_t *name);
+
+//void* my_mono_image_open_from_data_with_name(void *arg0, size_t arg1, int arg2, double *arg3, char arg4, int arg5) // hook animal
+void* my_mono_image_open_from_data_with_name(int8_t *data, int32_t *data_len, gboolean need_copy, MonoImageOpenStatus *status, gboolean refonly,int8_t *name) // hook jielan
 {
 //	char* p = strrchr(name, '/')+1;
 //	mode_t old_mode = umask(0);
@@ -82,19 +84,35 @@ void* my_mono_image_open_from_data_with_name(void *arg0, size_t arg1, int arg2, 
 //	}
 //	umask(old_mode);
 
-//  void *ret = old_mono_image_open_from_data_with_name(data, data_len, need_copy, status, refonly, name);
-	void *ret = old_mono_image_open_from_data_with_name(arg0, arg1, arg2, arg3, arg4, arg5); //hook animal
-	LOGD("Into : my_mono_image_open_from_data_with_name, name = %s, arg1 = %d, arg2 = %d, arg3 = %d, arg4 = %s, arg5 = %d\n", arg0, arg1, arg2, arg3, arg4, arg5);
-    saveDllFile(arg0, arg1, getNextFilePath(".dll").c_str());
+    // decrypt dll
+//    if("/data/app/com.ztgame.jielan-1.apk/assets/bin/Data/Managed/Assembly-CSharp.dll" == (char *)name)
+//    {
+//        //LOGD("fake_unity3d_do_mono_image_open_from_data_with_name, name = %s, data = %s, data_len = %d\n", name, offset, data_len);
+//        LOGD("fake_unity3d_do_mono_image_open_from_data_with_name mono: === Start Decrypt Dll ==========\n");
+//        size_t len;
+//        char* decryptData = (char *)xxtea_decrypt(data, len, "123456", &len);
+//        int i = 0;
+//        for ( i = 0; i < len; ++i)
+//        {
+//            data[i] = decryptData[i];
+//        }
+//        LOGD("fake_unity3d_do_mono_image_open_from_data_with_name mono: === End Decrypt Dll ========== \n");
+//    }
 
-//    LOGD("[hookU3d] Info: image name is %s, data offset is %d, data len is %d.\n", name, offset, data_len); // hook jielan
-//    void *ret = old_mono_image_open_from_data_with_name(offset, data_len, a3, a4, refonly, name); //hook jielan
-//    saveDllFile(offset, data_len, getNextFilePath(".dll").c_str());
+//  void *ret = old_mono_image_open_from_data_with_name(data, data_len, need_copy, status, refonly, name);
+
+//	void *ret = old_mono_image_open_from_data_with_name(arg0, arg1, arg2, arg3, arg4, arg5); //hook animal
+//	LOGD("Into : my_mono_image_open_from_data_with_name, name = %s, arg1 = %d, arg2 = %d, arg3 = %d, arg4 = %s, arg5 = %d\n", arg0, arg1, arg2, arg3, arg4, arg5);
+//  saveAniDllFile(arg0, arg1, getNextFilePath(".dll").c_str());
+
+    LOGD("[hookU3d] Info: image name is %s, data offset is %d, data len is %d.\n", name, data, data_len); // hook jielan
+    void *ret = old_mono_image_open_from_data_with_name(data, data_len, need_copy, status, refonly, name); //hook jielan
+    saveDllFile(data, data_len, getNextFilePath(".dll").c_str());
 
 	return ret;
 }
 
-bool saveDllFile(void *buf, size_t len, const char *outFileName)
+bool saveAniDllFile(void *buf, size_t len, const char *outFileName)
 {
     LOGD("[U3dHook] call saveFile.\n");
     bool bSuccess = false;
@@ -112,7 +130,7 @@ bool saveDllFile(void *buf, size_t len, const char *outFileName)
     return bSuccess;
 }
 
-bool saveDllFile(int offset, char *data_len, const char *outFileName)
+bool saveDllFile(int8_t *offset, int32_t *data_len, const char *outFileName)
 {
     LOGD("[U3dHook] call saveFile.\n");
     bool bSuccess = false;

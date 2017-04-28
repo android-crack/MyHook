@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <string>
+#include "xxtea.h"
 
 using namespace std;
 
@@ -50,7 +51,7 @@ void* get_module_base(int pid, const char* module_name);
 void* get_remote_addr(int target_pid, const char* module_name, void* local_addr);
 bool saveFile(const void* addr, int len, const char *outFileName);
 string getNextFilePath(const char *fileExt);
-bool saveDllFile(int offset, char *data_len, const char *outFileName);
-bool saveDllFile(void *buf, size_t len, const char *outFileName);
+bool saveDllFile(int8_t *offset, int32_t *data_len, const char *outFileName);
+bool saveAniDllFile(void *buf, size_t len, const char *outFileName);
 
 #endif //U3DHOOK_U3DHOOK_CY_H
