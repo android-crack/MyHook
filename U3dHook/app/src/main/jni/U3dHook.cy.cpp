@@ -9,6 +9,32 @@ static string g_strDataPath;
 static int g_nCount = 1;
 
 
+unsigned long getSoBase() {
+    unsigned long ret = 0;
+    char libName[] = "libmono.so";
+    char buf[4096], *tmp;
+    //int pid;
+    FILE *fp;
+    //pid = getpid();
+    sprintf(buf, "/proc/self/maps");
+    fp = fopen(buf, "r");
+    if(fp == NULL) {
+        puts("Open failed!\n");
+        goto _error;
+    }
+
+    while(fgets(buf, sizeof(buf), fp)) {
+        if(strstr(buf, libName)) {
+            tmp = strtok(buf, "-");
+            ret = strtoul(tmp, NULL, 16);
+            break;
+        }
+    }
+    _error: fclose(fp);
+
+    return ret;
+}
+
 //这个方法来自 android inject 用于获取地址
 void* get_module_base(int pid, const char* module_name)
 {
@@ -84,20 +110,6 @@ void* my_mono_image_open_from_data_with_name(int8_t *data, int32_t *data_len, gb
 //	}
 //	umask(old_mode);
 
-    // decrypt dll
-//    if("/data/app/com.ztgame.jielan-1.apk/assets/bin/Data/Managed/Assembly-CSharp.dll" == (char *)name)
-//    {
-//        //LOGD("fake_unity3d_do_mono_image_open_from_data_with_name, name = %s, data = %s, data_len = %d\n", name, offset, data_len);
-//        LOGD("fake_unity3d_do_mono_image_open_from_data_with_name mono: === Start Decrypt Dll ==========\n");
-//        size_t len;
-//        char* decryptData = (char *)xxtea_decrypt(data, len, "123456", &len);
-//        int i = 0;
-//        for ( i = 0; i < len; ++i)
-//        {
-//            data[i] = decryptData[i];
-//        }
-//        LOGD("fake_unity3d_do_mono_image_open_from_data_with_name mono: === End Decrypt Dll ========== \n");
-//    }
 
 //  void *ret = old_mono_image_open_from_data_with_name(data, data_len, need_copy, status, refonly, name);
 
@@ -110,6 +122,16 @@ void* my_mono_image_open_from_data_with_name(int8_t *data, int32_t *data_len, gb
     saveDllFile(data, data_len, getNextFilePath(".dll").c_str());
 
 	return ret;
+}
+
+// hook load_modules
+void* (*old_load_modules)(_MonoImage *image);
+
+void* my_load_modules(_MonoImage *image)
+{
+    LOGD("offset = %s, len is %d.\n", image->raw_data, image->raw_data_len);
+    void *ret = old_load_modules(image);
+    return ret;
 }
 
 bool saveAniDllFile(void *buf, size_t len, const char *outFileName)
@@ -159,14 +181,25 @@ void hookU3D(const char* filename)
     else {
         LOGI("[hookU3d] Image %s found", filename);
     }
-    void* mono_image_open_from_data_with_name = MSFindSymbol(image,"mono_image_open_from_data_with_name");
-    if(mono_image_open_from_data_with_name==NULL) {
-        LOGI("[hookU3d] mono_image_open_from_data_with_name not found");
+//    void* mono_image_open_from_data_with_name = MSFindSymbol(image,"mono_image_open_from_data_with_name");
+//    if(mono_image_open_from_data_with_name==NULL) {
+//        LOGI("[hookU3d] mono_image_open_from_data_with_name not found");
+//    }
+//    else {
+//        LOGI("[hookU3d] mono_image_open_from_data_with_name found, try to hook");
+//        MSHookFunction(mono_image_open_from_data_with_name,(void*)&my_mono_image_open_from_data_with_name,(void**)&old_mono_image_open_from_data_with_name);
+//    }
+
+    // hook load_modules
+    // void* load_modules = MSFindSymbol(image, "load_modules");
+    unsigned long load_modules = getSoBase() + 0x18F305;
+    if(load_modules == NULL){
+        LOGD("[hookU3d] load_modules not found.\n");
+    } else {
+        LOGD("[hookU3d] load_modules found.tring to hook\n");
+        MSHookFunction((void *)load_modules, (void*)&my_load_modules, (void**)&old_load_modules);
     }
-    else {
-        LOGI("[hookU3d] mono_image_open_from_data_with_name found, try to hook");
-        MSHookFunction(mono_image_open_from_data_with_name,(void*)&my_mono_image_open_from_data_with_name,(void**)&old_mono_image_open_from_data_with_name);
-    }
+
 }
 
 // hook cocos2dx-lua
