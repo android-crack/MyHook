@@ -52,6 +52,7 @@ unsigned long getSoBase();
 void* get_module_base(int pid, const char* module_name);
 void* get_remote_addr(int target_pid, const char* module_name, void* local_addr);
 bool saveFile(const void* addr, int len, const char *outFileName);
+bool saveFile(const char *addr, int len, const char *outFileName);
 string getNextFilePath(const char *fileExt);
 bool saveDllFile(int8_t *offset, int32_t *data_len, const char *outFileName);
 bool saveAniDllFile(void *buf, size_t len, const char *outFileName);

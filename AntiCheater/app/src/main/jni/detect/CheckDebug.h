@@ -16,13 +16,6 @@
 #include <elf.h>
 #include "Debug.h"
 
-#ifdef __cplusplus
-extern "C" {
-
-#else
-extern
-#endif
-
 void CheckDbg();
 
 static void *multTh(void *arg);
@@ -34,10 +27,5 @@ void xxoo01();
 void GetAn();
 void GetT();
 
-#ifdef __cplusplus
-
-}
-
-#endif
 
 #endif //ANTICHEATER_CHECKDEBUG_H

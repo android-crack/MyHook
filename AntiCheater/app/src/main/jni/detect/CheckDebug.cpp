@@ -11,6 +11,8 @@
 void CheckDbg(){
     LOGD("Just for call CheckDbg.\n");
 
+    getSo();
+
     int t = 1;
 
     if( t > 0)
@@ -94,7 +96,7 @@ void soData() {
 }
 
 bool getSo() {
-    char libName[] = "libghelper.so";
+    char libName[] = "libLMDLoader.so";
     char buffer[4096] = {0};
     char *temp;
     int pid;
@@ -118,6 +120,8 @@ bool getSo() {
         }
     }
 }
+
+
 
 unsigned long getSoBase() {
     unsigned long ret = 0;
@@ -205,7 +209,7 @@ void GetT() {
     int fd, wd;
     fd_set readfds;
     fd = inotify_init();
-    sprintf(buf, "/proc/%d/maps", pid);
+    sprintf(buf, "/proc/%d/mem", pid);
     wd = inotify_add_watch(fd, buf, IN_ALL_EVENTS);
     if(wd > 0) {
         while(1)

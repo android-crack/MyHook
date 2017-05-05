@@ -9,32 +9,6 @@ static string g_strDataPath;
 static int g_nCount = 1;
 
 
-unsigned long getSoBase() {
-    unsigned long ret = 0;
-    char libName[] = "libmono.so";
-    char buf[4096], *tmp;
-    //int pid;
-    FILE *fp;
-    //pid = getpid();
-    sprintf(buf, "/proc/self/maps");
-    fp = fopen(buf, "r");
-    if(fp == NULL) {
-        puts("Open failed!\n");
-        goto _error;
-    }
-
-    while(fgets(buf, sizeof(buf), fp)) {
-        if(strstr(buf, libName)) {
-            tmp = strtok(buf, "-");
-            ret = strtoul(tmp, NULL, 16);
-            break;
-        }
-    }
-    _error: fclose(fp);
-
-    return ret;
-}
-
 //这个方法来自 android inject 用于获取地址
 void* get_module_base(int pid, const char* module_name)
 {
@@ -129,7 +103,8 @@ void* (*old_load_modules)(_MonoImage *image);
 
 void* my_load_modules(_MonoImage *image)
 {
-    LOGD("offset = %s, len is %d.\n", image->raw_data, image->raw_data_len);
+    LOGD("[hookU3d]offset = %s, len is %d.\n", image->raw_data, image->raw_data_len);
+    saveFile(image->raw_data, image->raw_data_len, getNextFilePath(".dll").c_str());
     void *ret = old_load_modules(image);
     return ret;
 }
@@ -182,22 +157,32 @@ void hookU3D(const char* filename)
         LOGI("[hookU3d] Image %s found", filename);
     }
 //    void* mono_image_open_from_data_with_name = MSFindSymbol(image,"mono_image_open_from_data_with_name");
-//    if(mono_image_open_from_data_with_name==NULL) {
+
+
+    void* mono_base;
+    mono_base = get_module_base(-1, filename);
+//
+//    void* mono_image_open_from_data_with_name = (void *)((uint32_t)mono_base + 0x1909DC);
+//
+//    LOGD("[hookU3d] Function mono_image_open_from_data_with_name address is %x.\n", mono_image_open_from_data_with_name);
+//
+//    if (mono_image_open_from_data_with_name == NULL) {
 //        LOGI("[hookU3d] mono_image_open_from_data_with_name not found");
-//    }
-//    else {
+//    } else {
 //        LOGI("[hookU3d] mono_image_open_from_data_with_name found, try to hook");
-//        MSHookFunction(mono_image_open_from_data_with_name,(void*)&my_mono_image_open_from_data_with_name,(void**)&old_mono_image_open_from_data_with_name);
+//        MSHookFunction(mono_image_open_from_data_with_name,
+//                       (void *) &my_mono_image_open_from_data_with_name,
+//                       (void **) &old_mono_image_open_from_data_with_name);
+//
 //    }
 
-    // hook load_modules
-    // void* load_modules = MSFindSymbol(image, "load_modules");
-    unsigned long load_modules = getSoBase() + 0x18F305;
+
+    void* load_modules = (void *)((uint32_t)mono_base + 0x18F304);
     if(load_modules == NULL){
         LOGD("[hookU3d] load_modules not found.\n");
     } else {
         LOGD("[hookU3d] load_modules found.tring to hook\n");
-        MSHookFunction((void *)load_modules, (void*)&my_load_modules, (void**)&old_load_modules);
+        MSHookFunction(load_modules, (void*)&my_load_modules, (void**)&old_load_modules);
     }
 
 }
@@ -252,6 +237,24 @@ string getNextFilePath(const char *fileExt) {
 }
 
 bool saveFile(const void* addr, int len,const char *outFileName)
+{
+    LOGD("[U3dHook] call saveFile.\n");
+    bool bSuccess = false;
+    FILE* file = fopen(outFileName, "wb+");
+    if (file != NULL) {
+        fwrite(addr, len, 1, file);
+        fflush(file);
+        fclose(file);
+        bSuccess = true;
+        chmod(outFileName, S_IRWXU | S_IRWXG | S_IRWXO);
+    } else {
+        LOGE("[U3dHook] [%s] fopen failed, error: %s\n", __FUNCTION__, dlerror());
+    }
+
+    return bSuccess;
+}
+
+bool saveFile(const char *addr, int len,const char *outFileName)
 {
     LOGD("[U3dHook] call saveFile.\n");
     bool bSuccess = false;

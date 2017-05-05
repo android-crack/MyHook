@@ -16,33 +16,12 @@
 #include <unistd.h>
 #include "detect/Debug.h"
 
-#ifdef __cplusplus
-extern "C" {
+#define MAX 128
 
-#else
-extern
-#endif
-
-extern "C"  void init();
-
+static void init() __attribute__(constructor);
 bool loadEngine();
 void unLoadEngine();
-void SpeedHack();
-void* ThreadCheckSpeedHack();
-void* VirtualMachine();
-void* ThreadCheckVirtualMachine();
-void Debug();
-void* ThreadCheckDebug();
-void RootUser();
-void* ThreadRootUserCheck();
-void ModBinary();
-void* ThreadModiBinary();
-void run();
-
-#ifdef __cplusplus
-
-}
-
-#endif
+bool getSo();
+void badData();
 
 #endif //ANTICHEATER_LOADER_H
