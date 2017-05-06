@@ -275,7 +275,7 @@ string getNextFilePath(const char *fileExt) {
         g_strDataPath = "/sdcard/lua_cache";
 
     }
-    else if(fileExt == ".dll" || fileExt == ".bytes")
+    else if(fileExt == ".dll")
     {
         g_strDataPath = "/sdcard/dll_cache";
 
