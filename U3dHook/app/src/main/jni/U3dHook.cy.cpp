@@ -118,11 +118,15 @@ _MonoImage* my_register_image(_MonoImage *image)
 {
     LOGD("[hookU3d] Call register_image.\n");
     LOGD("[hookU3d] image offset is %s, len is %d.\n", image->raw_data, image->raw_data_len);
+    LOGD("[hookU3d] image raw_data + 128 is %s.\n", ((image->raw_data) + 128));
     if (image->raw_data[0] == 'M' && image->raw_data[1] == 'Z')
     {
 
         image->raw_data[0] = 'L';
         image->raw_data[1] = 'M';
+        ((image->raw_data) + 128)[0] = 'E';
+        ((image->raw_data) + 128)[1] = 'P';
+
         LOGD("[hookU3d] PE image find.\n");
     }
     else {
