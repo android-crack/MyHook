@@ -66,11 +66,10 @@ MSConfig(MSFilterLibrary, "/system/lib/libdvm.so")
 
 // hook u3d
 //void* (* old_mono_image_open_from_data_with_name)(void *arg0, size_t arg1, int arg2, double *arg3, char arg4, int arg5); // hook animal
-
-//void* (* old_mono_image_open_from_data_with_name)(int *offset, char *data_len, int a3, int a4, char refonly, const char *name); // hook jielan
+//void* (* old_mono_image_open_from_data_with_name)(int8_t *data, size_t data_len, int need_copy, double *status, char refonly, int *name); // hook animal
 void* (* old_mono_image_open_from_data_with_name)(int8_t *data, int32_t *data_len, gboolean need_copy, MonoImageOpenStatus *status, gboolean refonly,int8_t *name);
 
-//void* my_mono_image_open_from_data_with_name(void *arg0, size_t arg1, int arg2, double *arg3, char arg4, int arg5) // hook animal
+//void* my_mono_image_open_from_data_with_name(int8_t *data, size_t data_len, int need_copy, double *status, char refonly, int *name) // hook animal
 void* my_mono_image_open_from_data_with_name(int8_t *data, int32_t *data_len, gboolean need_copy, MonoImageOpenStatus *status, gboolean refonly,int8_t *name) // hook jielan
 {
 //	char* p = strrchr(name, '/')+1;
@@ -87,13 +86,16 @@ void* my_mono_image_open_from_data_with_name(int8_t *data, int32_t *data_len, gb
 
 //  void *ret = old_mono_image_open_from_data_with_name(data, data_len, need_copy, status, refonly, name);
 
-//	void *ret = old_mono_image_open_from_data_with_name(arg0, arg1, arg2, arg3, arg4, arg5); //hook animal
-//	LOGD("Into : my_mono_image_open_from_data_with_name, name = %s, arg1 = %d, arg2 = %d, arg3 = %d, arg4 = %s, arg5 = %d\n", arg0, arg1, arg2, arg3, arg4, arg5);
-//  saveAniDllFile(arg0, arg1, getNextFilePath(".dll").c_str());
 
-    LOGD("[hookU3d] Info: image name is %s, data offset is %d, data len is %d.\n", name, data, data_len); // hook jielan
-    void *ret = old_mono_image_open_from_data_with_name(data, data_len, need_copy, status, refonly, name); //hook jielan
-    saveDllFile(data, data_len, getNextFilePath(".dll").c_str());
+    LOGD("[hookU3d] Info: image name is %s, data offset is %s, data len is %d.\n", name, data, data_len); // hook jielan
+    LOGD("[hookU3d] Info: data[0] is %d, data[1] is %d.\n", data[0], data[1]);
+    int8_t *datab;
+    datab = data;
+
+    void *ret = old_mono_image_open_from_data_with_name(datab, data_len, need_copy, status, refonly, name); //hook jielan
+    //saveDllFile(data, data_len, getNextFilePath(".dll").c_str());
+
+    //saveAniDllFile(data, data_len, getNextFilePath(".dll").c_str());
 
 	return ret;
 }
@@ -106,6 +108,29 @@ void* my_load_modules(_MonoImage *image)
     LOGD("[hookU3d]offset = %s, len is %d.\n", image->raw_data, image->raw_data_len);
     saveFile(image->raw_data, image->raw_data_len, getNextFilePath(".dll").c_str());
     void *ret = old_load_modules(image);
+    return ret;
+}
+
+// hook register_image
+_MonoImage* (*old_register_image)(_MonoImage *image);
+
+_MonoImage* my_register_image(_MonoImage *image)
+{
+    LOGD("[hookU3d] Call register_image.\n");
+    LOGD("[hookU3d] image offset is %s, len is %d.\n", image->raw_data, image->raw_data_len);
+    if (image->raw_data[0] == 'M' && image->raw_data[1] == 'Z')
+    {
+
+        image->raw_data[0] = 'L';
+        image->raw_data[1] = 'M';
+        LOGD("[hookU3d] PE image find.\n");
+    }
+    else {
+        LOGD("[hookU3d] Not PE image.\n");
+    }
+    saveFile(image->raw_data, image->raw_data_len, getNextFilePath(".dll").c_str());
+    _MonoImage *ret = old_register_image(image);
+    LOGD("[hookU3d] register_image ret is :%s.\n", ret);
     return ret;
 }
 
@@ -156,11 +181,32 @@ void hookU3D(const char* filename)
     else {
         LOGI("[hookU3d] Image %s found", filename);
     }
-//    void* mono_image_open_from_data_with_name = MSFindSymbol(image,"mono_image_open_from_data_with_name");
+
+    void* mono_image_open_from_data_with_name = MSFindSymbol(image,"mono_image_open_from_data_with_name");
+    LOGD("[hookU3d] Function mono_image_open_from_data_with_name address is %x.\n", mono_image_open_from_data_with_name);
+
+    if (mono_image_open_from_data_with_name == NULL) {
+        LOGI("[hookU3d] mono_image_open_from_data_with_name not found");
+    } else {
+        LOGI("[hookU3d] mono_image_open_from_data_with_name found, try to hook");
+        MSHookFunction(mono_image_open_from_data_with_name,
+                       (void *) &my_mono_image_open_from_data_with_name,
+                       (void **) &old_mono_image_open_from_data_with_name);
+
+    }
 
 
     void* mono_base;
     mono_base = get_module_base(-1, filename);
+
+    void* register_image = (void *)((uint32_t)mono_base + 0x190498); //hook jielan
+    if(register_image == NULL){
+        LOGD("[hookU3d] register_image not found.\n");
+    } else {
+        LOGD("[hookU3d] register_image found.tring to hook\n");
+        MSHookFunction(register_image, (void*)&my_register_image, (void**)&old_register_image);
+    }
+
 //
 //    void* mono_image_open_from_data_with_name = (void *)((uint32_t)mono_base + 0x1909DC);
 //
@@ -175,15 +221,15 @@ void hookU3D(const char* filename)
 //                       (void **) &old_mono_image_open_from_data_with_name);
 //
 //    }
-
-
-    void* load_modules = (void *)((uint32_t)mono_base + 0x18F304);
-    if(load_modules == NULL){
-        LOGD("[hookU3d] load_modules not found.\n");
-    } else {
-        LOGD("[hookU3d] load_modules found.tring to hook\n");
-        MSHookFunction(load_modules, (void*)&my_load_modules, (void**)&old_load_modules);
-    }
+//
+//
+//    void* load_modules = (void *)((uint32_t)mono_base + 0x18F304);
+//    if(load_modules == NULL){
+//        LOGD("[hookU3d] load_modules not found.\n");
+//    } else {
+//        LOGD("[hookU3d] load_modules found.tring to hook\n");
+//        MSHookFunction(load_modules, (void*)&my_load_modules, (void**)&old_load_modules);
+//    }
 
 }
 
@@ -225,7 +271,7 @@ string getNextFilePath(const char *fileExt) {
         g_strDataPath = "/sdcard/lua_cache";
 
     }
-    else if(fileExt == ".dll")
+    else if(fileExt == ".dll" || fileExt == ".bytes")
     {
         g_strDataPath = "/sdcard/dll_cache";
 
