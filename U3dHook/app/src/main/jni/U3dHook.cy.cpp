@@ -5,9 +5,35 @@
 #include "linker.h"
 #include "U3dHook.cy.h"
 
+
 static string g_strDataPath;
 static int g_nCount = 1;
 
+inline
+int32_t NewSeed(int32_t seed)
+{
+    seed = (seed * 5188 + 18) % 131076;
+    return seed;
+}
+
+inline
+void NewDec( uint32_t seedVal, unsigned char* buf, uint32_t len)
+{
+    uint32_t* seed=&seedVal;
+
+    unsigned char* key = ( unsigned char* )seed;// &(*seed);
+    uint32_t k = 0;
+    unsigned char c = 0;
+    uint32_t i;
+    for ( i = 0; i < len; i++ )
+    {
+        k %= 4;
+        unsigned char x = ( buf[i] - c )  ^ key[k];
+        ++k;
+        c = buf[i];
+        buf[i] = x;
+    }
+}
 
 //这个方法来自 android inject 用于获取地址
 void* get_module_base(int pid, const char* module_name)
@@ -65,86 +91,65 @@ MSConfig(MSFilterLibrary, "/system/lib/libdvm.so")
 
 
 // hook u3d
-//void* (* old_mono_image_open_from_data_with_name)(void *arg0, size_t arg1, int arg2, double *arg3, char arg4, int arg5); // hook animal
-//void* (* old_mono_image_open_from_data_with_name)(int8_t *data, size_t data_len, int need_copy, double *status, char refonly, int *name); // hook animal
-void* (* old_mono_image_open_from_data_with_name)(int8_t *data, int32_t *data_len, gboolean need_copy, MonoImageOpenStatus *status, gboolean refonly,int8_t *name);
-
-//void* my_mono_image_open_from_data_with_name(int8_t *data, size_t data_len, int need_copy, double *status, char refonly, int *name) // hook animal
-void* my_mono_image_open_from_data_with_name(int8_t *data, int32_t *data_len, gboolean need_copy, MonoImageOpenStatus *status, gboolean refonly,int8_t *name) // hook jielan
+_MonoImage* (* old_mono_image_open_from_data_with_name)(char *data, int data_len, gboolean need_copy, MonoImageOpenStatus *status, gboolean refonly,char *name);
+_MonoImage* my_mono_image_open_from_data_with_name(char *data, int data_len, gboolean need_copy, MonoImageOpenStatus *status, gboolean refonly,char *name) // hook jielan
 {
-//	char* p = strrchr(name, '/')+1;
-//	mode_t old_mode = umask(0);
-//	char file_name[256];
-//	sprintf(file_name, "/data/local/tmp/%s", p);
-//	int fd = open(file_name, O_RDWR|O_CREAT, S_IRWXU|S_IRWXG|S_IRWXO);
-//	if(fd) {
-//		write(fd, data, data_len);
-//		close(fd);
-//	}
-//	umask(old_mode);
+    LOGD("[U3DHook] Info: image name is %s, data offset is %s, data len is %d.\n", name, data, data_len); // hook jielan
+    LOGD("[U3DHook] Info: data[0] is %d, data[1] is %d.\n", data[0], data[1]);
 
+    _MonoImage *ret = old_mono_image_open_from_data_with_name(data, data_len, need_copy, status, refonly, name); //hook jielan
 
-//  void *ret = old_mono_image_open_from_data_with_name(data, data_len, need_copy, status, refonly, name);
-
-
-    LOGD("[hookU3d] Info: image name is %s, data offset is %s, data len is %d.\n", name, data, data_len); // hook jielan
-    LOGD("[hookU3d] Info: data[0] is %d, data[1] is %d.\n", data[0], data[1]);
-    int8_t *datab;
-    datab = data;
-
-    void *ret = old_mono_image_open_from_data_with_name(datab, data_len, need_copy, status, refonly, name); //hook jielan
-    //saveDllFile(data, data_len, getNextFilePath(".dll").c_str());
-
-    //saveAniDllFile(data, data_len, getNextFilePath(".dll").c_str());
+    LOGD("[U3DHook] after call old_mono_image_open_from_data_with_name datab[0] is %d.\n",data[0]);
+    if(strstr(name, "Assembly-CSharp.dll"))
+    {
+        LOGD("[U3DHook] Assembly-CSharp.dll ");
+        saveDllFile(ret->raw_data, ret->raw_data_len, getNextFilePath(".dll").c_str());
+    }
 
 	return ret;
 }
 
-// hook load_modules
-void* (*old_load_modules)(_MonoImage *image);
 
-void* my_load_modules(_MonoImage *image)
+// hook do_mono_image_load(MonoImage *image, MonoImageOpenStatus *status, gboolean care_about_cli, gboolean care_about_pecoff);
+_MonoImage* (*old_do_mono_image_load)(_MonoImage *image, MonoImageOpenStatus *status, gboolean care_about_cli, gboolean care_about_pecoff);
+_MonoImage* my_do_mono_image_load(_MonoImage *image, MonoImageOpenStatus *status, gboolean care_about_cli, gboolean care_about_pecoff)
 {
-    LOGD("[hookU3d]offset = %s, len is %d.\n", image->raw_data, image->raw_data_len);
-    saveFile(image->raw_data, image->raw_data_len, getNextFilePath(".dll").c_str());
-    void *ret = old_load_modules(image);
-    return ret;
-}
+    LOGD("[U3DHook] call my_do_mono_image_load. image->moudle_name is %s.\n", image->module_name);
 
-// hook register_image
-_MonoImage* (*old_register_image)(_MonoImage *image);
+    _MonoImage *ret = old_do_mono_image_load(image, status, care_about_cli, care_about_pecoff);
 
-_MonoImage* my_register_image(_MonoImage *image)
-{
-    LOGD("[hookU3d] Call register_image.\n");
-    LOGD("[hookU3d] image offset is %s, len is %d.\n", image->raw_data, image->raw_data_len);
-    LOGD("[hookU3d] image raw_data + 128 is %s.\n", ((image->raw_data) + 128));
-    if (image->raw_data[0] == 'M' && image->raw_data[1] == 'Z')
+    if(strstr(image->assembly_name, "Assembly-CSharp.dll"))
     {
-
-        image->raw_data[0] = 'L';
-        image->raw_data[1] = 'M';
-        ((image->raw_data) + 128)[0] = 'E';
-        ((image->raw_data) + 128)[1] = 'P';
-
-        LOGD("[hookU3d] PE image find.\n");
+        saveFile(image->raw_data, image->raw_data_len, getNextFilePath(".dll").c_str());
     }
-    else {
-        LOGD("[hookU3d] Not PE image.\n");
-    }
-    saveFile(image->raw_data, image->raw_data_len, getNextFilePath(".dll").c_str());
-    _MonoImage *ret = old_register_image(image);
-    LOGD("[hookU3d] register_image ret is :%s.\n", ret);
+
+    LOGD("[U3DHook] do_mono_image_load ret is :%s.\n", ret);
     return ret;
+
 }
 
-bool saveAniDllFile(void *buf, size_t len, const char *outFileName)
+_MonoImage* (*old_mono_image_init)(_MonoImage *image);
+_MonoImage* my_mono_image_init(_MonoImage *image)
+{
+    LOGD("[U3DHook] call mono_image_init. image->assembly_name is %s.\n", image->assembly_name);
+
+    _MonoImage *ret = old_mono_image_init(image);
+
+    if(strstr(image->assembly_name, "Assembly-CSharp.dll"))
+        saveFile(image->raw_data, image->raw_data_len, getNextFilePath(".dll").c_str());
+    LOGD("[U3DHook] mono_image_init ret is :%s.\n", ret);
+    return ret;
+
+}
+
+
+bool saveDllFile(char *data, int data_len, const char *outFileName)
 {
     LOGD("[U3dHook] call saveFile.\n");
     bool bSuccess = false;
     FILE* file = fopen(outFileName, "wb+");
     if (file != NULL) {
-        fwrite(buf, len, 1, file);
+        fwrite((void *)data, (int)data_len, 1, file);
         fflush(file);
         fclose(file);
         bSuccess = true;
@@ -156,83 +161,68 @@ bool saveAniDllFile(void *buf, size_t len, const char *outFileName)
     return bSuccess;
 }
 
-bool saveDllFile(int8_t *offset, int32_t *data_len, const char *outFileName)
+void U3DHook(const char* filename)
 {
-    LOGD("[U3dHook] call saveFile.\n");
-    bool bSuccess = false;
-    FILE* file = fopen(outFileName, "wb+");
-    if (file != NULL) {
-        fwrite((void *)offset, (int)data_len, 1, file);
-        fflush(file);
-        fclose(file);
-        bSuccess = true;
-        chmod(outFileName, S_IRWXU | S_IRWXG | S_IRWXO);
-    } else {
-        LOGE("[U3dHook] [%s] fopen failed, error: %s\n", __FUNCTION__, dlerror());
-    }
-
-    return bSuccess;
-}
-
-void hookU3D(const char* filename)
-{
-    LOGI("[hookU3d] Have load the libmono.so, then try to hook the func!!");
+    LOGI("[U3DHook] Have load the libmono.so, then try to hook the func!!");
     MSImageRef image;
     image = MSGetImageByName(filename);
     if(image==NULL) {
-        LOGI("[hookU3d] Image %s not found", filename);
+        LOGI("[U3DHook] Image %s not found", filename);
     }
     else {
-        LOGI("[hookU3d] Image %s found", filename);
+        LOGI("[U3DHook] Image %s found", filename);
     }
 
     void* mono_image_open_from_data_with_name = MSFindSymbol(image,"mono_image_open_from_data_with_name");
-    LOGD("[hookU3d] Function mono_image_open_from_data_with_name address is %x.\n", mono_image_open_from_data_with_name);
+    LOGD("[U3DHook] Function mono_image_open_from_data_with_name address is %x.\n", mono_image_open_from_data_with_name);
 
     if (mono_image_open_from_data_with_name == NULL) {
-        LOGI("[hookU3d] mono_image_open_from_data_with_name not found");
+        LOGI("[U3DHook] mono_image_open_from_data_with_name not found");
     } else {
-        LOGI("[hookU3d] mono_image_open_from_data_with_name found, try to hook");
+        LOGI("[U3DHook] mono_image_open_from_data_with_name found, try to hook");
         MSHookFunction(mono_image_open_from_data_with_name,
                        (void *) &my_mono_image_open_from_data_with_name,
                        (void **) &old_mono_image_open_from_data_with_name);
 
     }
 
-
-    void* mono_base;
-    mono_base = get_module_base(-1, filename);
-
-    void* register_image = (void *)((uint32_t)mono_base + 0x190498); //hook jielan
-    if(register_image == NULL){
-        LOGD("[hookU3d] register_image not found.\n");
-    } else {
-        LOGD("[hookU3d] register_image found.tring to hook\n");
-        MSHookFunction(register_image, (void*)&my_register_image, (void**)&old_register_image);
-    }
-
+//    void* mono_image_init = MSFindSymbol(image,"mono_image_init");
+//    LOGD("[U3DHook] Function mono_image_init address is %x.\n", mono_image_init);
 //
-//    void* mono_image_open_from_data_with_name = (void *)((uint32_t)mono_base + 0x1909DC);
-//
-//    LOGD("[hookU3d] Function mono_image_open_from_data_with_name address is %x.\n", mono_image_open_from_data_with_name);
-//
-//    if (mono_image_open_from_data_with_name == NULL) {
-//        LOGI("[hookU3d] mono_image_open_from_data_with_name not found");
+//    if (mono_image_init == NULL) {
+//        LOGI("[U3DHook] mono_image_init not found");
 //    } else {
-//        LOGI("[hookU3d] mono_image_open_from_data_with_name found, try to hook");
-//        MSHookFunction(mono_image_open_from_data_with_name,
-//                       (void *) &my_mono_image_open_from_data_with_name,
-//                       (void **) &old_mono_image_open_from_data_with_name);
+//        LOGI("[U3DHook] mono_image_init found, try to hook");
+//        MSHookFunction(mono_image_init,
+//                       (void *) &my_mono_image_init,
+//                       (void **) &old_mono_image_init);
 //
 //    }
+
+
+
+
+//    void* mono_base;
+//    mono_base = get_module_base(-1, filename);
 //
 //
-//    void* load_modules = (void *)((uint32_t)mono_base + 0x18F304);
-//    if(load_modules == NULL){
-//        LOGD("[hookU3d] load_modules not found.\n");
+//    void* register_image = (void *)((uint32_t)mono_base + 0x111920);
+////    //void* register_image = (void *)((uint32_t)mono_base + 0x196918); // hook bob
+//    //void* register_image = MSFindSymbol(image,"register_image");
+//    if(register_image == NULL){
+//        LOGD("[U3DHook] register_image not found.\n");
 //    } else {
-//        LOGD("[hookU3d] load_modules found.tring to hook\n");
-//        MSHookFunction(load_modules, (void*)&my_load_modules, (void**)&old_load_modules);
+//        LOGD("[U3DHook] register_image found.tring to hook\n");
+//        MSHookFunction(register_image, (void*)&my_register_image, (void**)&old_register_image);
+ //   }
+
+//    void* mono_image_load_pe_data = (void *)((uint32_t)mono_base + 0x195f68);
+//    if(mono_image_load_pe_data == NULL)
+//    {
+//        LOGE("[U3DHook] mono_image_load_pe_data not found.\n");
+//    } else {
+//        LOGD("[U3DHook] mono_image_load_pe_data found. trying hook.\n");
+//        MSHookFunction(mono_image_load_pe_data, (void *)&my_mono_image_load_pe_data, (void **)&old_mono_image_load_pe_data);
 //    }
 
 }
@@ -242,7 +232,7 @@ void hookU3D(const char* filename)
 int (*luaL_loadbuffer_orig)(void *L, const char *buff, int size, const char *name) = NULL;
 
 int luaL_loadbuffer_mod(void *L, const char *buff, int size, const char *name) {
-    LOGD("[hookCocos-2dx] luaL_loadbuffer name: %s lua: %s.\n", name, buff);
+    LOGD("[Cocos2DHook] luaL_loadbuffer name: %s lua: %s.\n", name, buff);
     int ret = luaL_loadbuffer_orig(L, buff, size, name);
     saveFile(buff, size, getNextFilePath(".lua").c_str());
     return ret;
@@ -252,16 +242,16 @@ int (*decryptUF_orig)(void *pInBuff, int len, int *n, int *poutlen, char *name) 
 
 int decryptUF_mod(void *pInBuff, int len, int *n, int *poutlen, char *name)
 {
-    LOGD("[hookCocos-2dx] decryptUF addr %s, len %d, xx %d, putlen %d, name %s.\n", pInBuff, len, n, poutlen, name);
+    LOGD("[Cocos2DHook] decryptUF addr %s, len %d, xx %d, putlen %d, name %s.\n", pInBuff, len, n, poutlen, name);
     int ret = decryptUF_orig(pInBuff, len, n, poutlen, name);
-    LOGD("[hookCocos-2dx] save pngs to sdcard.\n");
+    LOGD("[Cocos2DHook] save pngs to sdcard.\n");
     saveFile(pInBuff, *poutlen, getNextFilePath(".png").c_str());
     return ret;
 }
 
 string getNextFilePath(const char *fileExt) {
 
-    LOGD("[hookCocos-2dx] call getNextFilePath.\n");
+    LOGD("[Cocos2DHook] call getNextFilePath.\n");
     char buff[100] = {0};
 
     ++g_nCount;
@@ -282,13 +272,13 @@ string getNextFilePath(const char *fileExt) {
     }
 
     sprintf(buff, "%s/%d%s",g_strDataPath.c_str(),g_nCount, fileExt);
-    LOGD("[hookCocos-2dx] buff is %s.\n", buff);
+    LOGD("[Cocos2DHook] buff is %s.\n", buff);
     return buff;
 }
 
-bool saveFile(const void* addr, int len,const char *outFileName)
+bool saveFile(const void *addr, int len,const char *outFileName)
 {
-    LOGD("[U3dHook] call saveFile.\n");
+    LOGD("[U3DHook] call void saveFile.\n");
     bool bSuccess = false;
     FILE* file = fopen(outFileName, "wb+");
     if (file != NULL) {
@@ -306,7 +296,7 @@ bool saveFile(const void* addr, int len,const char *outFileName)
 
 bool saveFile(const char *addr, int len,const char *outFileName)
 {
-    LOGD("[U3dHook] call saveFile.\n");
+    LOGD("[U3DHook] call char saveFile.\n");
     bool bSuccess = false;
     FILE* file = fopen(outFileName, "wb+");
     if (file != NULL) {
@@ -323,21 +313,21 @@ bool saveFile(const char *addr, int len,const char *outFileName)
 }
 
 void hookCocos(const char* filename){
-    LOGD("[hookCocos-2dx] hook begin.\n");
+    LOGD("[Cocos2DHook] hook begin.\n");
 
     MSImageRef image;
     image = MSGetImageByName(filename);
     if (image == NULL) {
-        LOGE("[hookCocos-2dx] dlopen libgame error: %s.\n", dlerror());
+        LOGE("[Cocos2DHook] dlopen libgame error: %s.\n", dlerror());
         return;
     }else{
-        LOGD("[hookCocos-2dx] libgmae.so dlopen ok.\n");
+        LOGD("[Cocos2DHook] libgmae.so dlopen ok.\n");
     }
 
     // hook luaL_loadbuffer
     void *pluaL_loadbuffer = MSFindSymbol(image, "luaL_loadbuffer");
     if(pluaL_loadbuffer){
-        LOGD("[hookCocos-2dx] luaL_loadbuffer found!\n");
+        LOGD("[Cocos2DHook] luaL_loadbuffer found!\n");
         MSHookFunction(pluaL_loadbuffer, (void *)&luaL_loadbuffer_mod, (void **)&luaL_loadbuffer_orig);
     }
 
@@ -345,10 +335,10 @@ void hookCocos(const char* filename){
     void *decryptUF = MSFindSymbol(image, "_ZN7cocos2d5extra8CCCrypto9decryptUFEPhiPiS3_");
     if (decryptUF == NULL)
     {
-        LOGE("[hookCocos-2dx] _ZN7cocos2d5extra8CCCrypto9decryptUFEPhiPiS3_ (decryptUF) not found!");
-        LOGE("[hookCocos-2dx] dlsym err: %s.", dlerror());
+        LOGE("[Cocos2DHook] _ZN7cocos2d5extra8CCCrypto9decryptUFEPhiPiS3_ (decryptUF) not found!");
+        LOGE("[Cocos2DHook] dlsym err: %s.", dlerror());
     }else{
-        LOGD("[hookCocos-2dx] _ZN7cocos2d5extra8CCCrypto9decryptUFEPhiPiS3_ (decryptUF) found!");
+        LOGD("[Cocos2DHook] _ZN7cocos2d5extra8CCCrypto9decryptUFEPhiPiS3_ (decryptUF) found!");
         MSHookFunction(decryptUF, (void *)&decryptUF_mod, (void **)&decryptUF_orig);
     }
 }
@@ -356,19 +346,24 @@ void hookCocos(const char* filename){
 //hook方法
 void* (*olddlsym)(void*  handle, const char*  symbol);
 void* newdlsym(void*  handle, const char*  symbol) {
-    LOGD("the handle [0x%x] symbol name:%s", (int)handle, symbol);
+    LOGD("[+]The handle [0x%x] symbol name:%s", (int)handle, symbol);
     return olddlsym(handle, symbol);
 }
-void* (*olddlopen)(const char* filename, int myflags);
-void* newdlopen(const char* filename, int myflags) {
-    LOGD("the dlopen name :%s", filename);
+void* (*olddlopen)(const char *filename, int myflags);
+void* newdlopen(const char *filename, int myflags) {
+    if(!(strstr(filename, "/system/lib/")))
+    {
+        LOGD("[+]The dlopen name :%s", filename);
+    }
+
     void *handle = olddlopen(filename, myflags);
 	if(strstr(filename, "libmono.so")) {
-        hookU3D(filename);
+        U3DHook(filename);
 	} else if(strstr(filename, "libgame.so"))
     {
-        hookCocos(filename);
+        //hookCocos(filename);
     }
+
 	return handle;
 }
 

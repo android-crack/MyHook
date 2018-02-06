@@ -15,11 +15,10 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <string>
-#include "xxtea.h"
 
 using namespace std;
 
-#define LOG_TAG "U3dHook"
+#define LOG_TAG "GameFuck"
 #define MAX 1024 * 1024 * 10
 
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -125,6 +124,7 @@ struct _MonoImage {
 
     char *name;
     const char *assembly_name;
+    const char *module_name;
 
     _MonoAssembly *assembly;
 };
@@ -136,6 +136,15 @@ typedef enum {
     MONO_IMAGE_IMAGE_INVALID
 } MonoImageOpenStatus;
 
+struct _MonoClass{
+    _MonoImage *image;
+    const char *name;
+
+};
+
+int32_t NewSeed(int32_t seed);
+void NewDec(int32_t seedVal, unsigned  char* buf, uint32_t len);
+
 typedef int gboolean;
 
 unsigned long getSoBase();
@@ -145,8 +154,34 @@ void* get_remote_addr(int target_pid, const char* module_name, void* local_addr)
 bool saveFile(const void* addr, int len, const char *outFileName);
 bool saveFile(const char *addr, int len, const char *outFileName);
 string getNextFilePath(const char *fileExt);
-bool saveDllFile(int8_t *offset, int32_t *data_len, const char *outFileName);
-bool saveAniDllFile(int8_t *buf, size_t len, const char *outFileName);
+bool saveDllFile(char *offset, int32_t data_len, const char *outFileName);
 
+
+// il2cpp
+
+typedef int32_t ImageIndex;
+typedef int32_t CustomAttributeIndex;
+
+
+struct Il2CppAssembly
+{
+    ImageIndex imageIndex;
+    CustomAttributeIndex customAttributeIndex;
+    int32_t referencedAssemblyStart;
+    int32_t referencedAssemblyCount;
+};
+
+struct Il2CppImage
+{
+    const char* name;
+
+    uint32_t typeCount;
+
+
+    uint32_t exportedTypeCount;
+
+
+    uint32_t token;
+};
 
 #endif //U3DHOOK_U3DHOOK_CY_H
