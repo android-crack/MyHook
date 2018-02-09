@@ -2,6 +2,8 @@
 // Created by Administrator on 2017/4/24 0024.
 //
 
+
+#include <sys/syscall.h>
 #include "linker.h"
 #include "U3dHook.cy.h"
 
@@ -76,13 +78,12 @@ MSConfig(MSFilterLibrary, "/system/lib/libdvm.so")
 
 
 // hook u3d
-_MonoImage* (* old_mono_image_open_from_data_with_name)(char *data, int data_len, gboolean need_copy, MonoImageOpenStatus *status, gboolean refonly,char *name);
-_MonoImage* my_mono_image_open_from_data_with_name(char *data, int data_len, gboolean need_copy, MonoImageOpenStatus *status, gboolean refonly,char *name) // hook jielan
+HOOK_DEF(_MonoImage* ,mono_image_open_from_data_with_name, char *data, int data_len, gboolean need_copy, MonoImageOpenStatus *status, gboolean refonly,char *name) // hook jielan
 {
     LOGD("[U3DHook] Info: image name is %s, data offset is %s, data len is %d.\n", name, data, data_len); // hook jielan
     LOGD("[U3DHook] Info: data[0] is %d, data[1] is %d.\n", data[0], data[1]);
 
-    _MonoImage *ret = old_mono_image_open_from_data_with_name(data, data_len, need_copy, status, refonly, name); //hook jielan
+    _MonoImage *ret = orig_mono_image_open_from_data_with_name(data, data_len, need_copy, status, refonly, name); //hook jielan
 
     LOGD("[U3DHook] after call old_mono_image_open_from_data_with_name datab[0] is %d.\n",data[0]);
     if(strstr(name, "Assembly-CSharp.dll"))
@@ -96,12 +97,11 @@ _MonoImage* my_mono_image_open_from_data_with_name(char *data, int data_len, gbo
 
 
 // hook do_mono_image_load(MonoImage *image, MonoImageOpenStatus *status, gboolean care_about_cli, gboolean care_about_pecoff);
-_MonoImage* (*old_do_mono_image_load)(_MonoImage *image, MonoImageOpenStatus *status, gboolean care_about_cli, gboolean care_about_pecoff);
-_MonoImage* my_do_mono_image_load(_MonoImage *image, MonoImageOpenStatus *status, gboolean care_about_cli, gboolean care_about_pecoff)
+HOOK_DEF(_MonoImage* , do_mono_image_load,_MonoImage *image, MonoImageOpenStatus *status, gboolean care_about_cli, gboolean care_about_pecoff)
 {
     LOGD("[U3DHook] call my_do_mono_image_load. image->moudle_name is %s.\n", image->module_name);
 
-    _MonoImage *ret = old_do_mono_image_load(image, status, care_about_cli, care_about_pecoff);
+    _MonoImage *ret = orig_do_mono_image_load(image, status, care_about_cli, care_about_pecoff);
 
     if(strstr(image->assembly_name, "Assembly-CSharp.dll"))
     {
@@ -113,12 +113,11 @@ _MonoImage* my_do_mono_image_load(_MonoImage *image, MonoImageOpenStatus *status
 
 }
 
-_MonoImage* (*old_mono_image_init)(_MonoImage *image);
-_MonoImage* my_mono_image_init(_MonoImage *image)
+HOOK_DEF(_MonoImage*, mono_image_init, _MonoImage *image)
 {
     LOGD("[U3DHook] call mono_image_init. image->assembly_name is %s.\n", image->assembly_name);
 
-    _MonoImage *ret = old_mono_image_init(image);
+    _MonoImage *ret = orig_mono_image_init(image);
 
     if(strstr(image->assembly_name, "Assembly-CSharp.dll"))
         saveFile(image->raw_data, image->raw_data_len, getNextFilePath(".dll").c_str());
@@ -127,12 +126,11 @@ _MonoImage* my_mono_image_init(_MonoImage *image)
 
 }
 
-_MonoImage* (*old_register_image)(_MonoImage *image);
-_MonoImage* my_register_image(_MonoImage *image)
+HOOK_DEF(_MonoImage*, register_image, _MonoImage *image)
 {
     LOGD("[U3DHook] call register_image. image->raw_data is %s.image->assembly_name is %s.\n", image->raw_data, image->assembly_name);
 
-    _MonoImage *ret = old_register_image(image);
+    _MonoImage *ret = orig_register_image(image);
 
     if(strstr(image->assembly_name, "Assembly-CSharp.dll"))
         saveFile(image->raw_data, image->raw_data_len, getNextFilePath(".dll").c_str());
@@ -141,8 +139,7 @@ _MonoImage* my_register_image(_MonoImage *image)
 
 }
 
-void* (*orig_mono_class_from_name)(_MonoImage *image, const char* name_space, const char *name);
-void* new_mono_class_from_name(_MonoImage *image, const char* name_space, const char *name)
+HOOK_DEF(void*, mono_class_from_name, _MonoImage *image, const char* name_space, const char *name)
 {
     void *ret = orig_mono_class_from_name(image, name_space, name);
     int i=1,j=1;
@@ -225,17 +222,17 @@ bool saveDllFile(char *data, int data_len, const char *outFileName)
     return bSuccess;
 }
 
-void U3DHook(const char* filename)
-{
-    LOGI("[U3DHook] Have load the libmono.so, then try to hook the func!!");
-    MSImageRef image;
-    image = MSGetImageByName(filename);
-    if(image==NULL) {
-        LOGI("[U3DHook] Image %s not found", filename);
-    }
-    else {
-        LOGI("[U3DHook] Image %s found", filename);
-    }
+//void U3DHook(const char* filename)
+//{
+//    LOGI("[U3DHook] Have load the libmono.so, then try to hook the func!!");
+//    MSImageRef image;
+//    image = MSGetImageByName(filename);
+//    if(image==NULL) {
+//        LOGI("[U3DHook] Image %s not found", filename);
+//    }
+//    else {
+//        LOGI("[U3DHook] Image %s found", filename);
+//    }
 
 //    void* mono_image_open_from_data_with_name = MSFindSymbol(image,"mono_image_open_from_data_with_name");
 //    LOGD("[U3DHook] Function mono_image_open_from_data_with_name address is %x.\n", mono_image_open_from_data_with_name);
@@ -250,17 +247,17 @@ void U3DHook(const char* filename)
 //
 //    }
 
-    void* mono_class_from_name = MSFindSymbol(image,"mono_class_from_name");
-
-    if (mono_class_from_name == NULL) {
-        LOGI("[U3DHook] mono_class_from_name not found");
-    } else {
-        LOGI("[U3DHook] mono_class_from_name found, try to hook");
-        MSHookFunction(mono_class_from_name,
-                       (void *) &new_mono_class_from_name,
-                       (void **) &orig_mono_class_from_name);
-
-    }
+//    void* mono_class_from_name = MSFindSymbol(image,"mono_class_from_name");
+//
+//    if (mono_class_from_name == NULL) {
+//        LOGI("[U3DHook] mono_class_from_name not found");
+//    } else {
+//        LOGI("[U3DHook] mono_class_from_name found, try to hook");
+//        MSHookFunction(mono_class_from_name,
+//                       (void *) &new_mono_class_from_name,
+//                       (void **) &orig_mono_class_from_name);
+//
+//    }
 
 //    void* mono_base;
 //    mono_base = get_module_base(-1, filename);
@@ -274,8 +271,8 @@ void U3DHook(const char* filename)
 //        LOGD("[U3DHook] mono_image_load_pe_data found. trying hook.\n");
 //        MSHookFunction(mono_image_load_pe_data, (void *)&my_mono_image_load_pe_data, (void **)&old_mono_image_load_pe_data);
 //    }
-
-}
+//
+//}
 
 void u3dHook(void *Handle)
 {
@@ -424,19 +421,35 @@ void hookCocos(const char* filename){
 }
 
 //hook方法
-void* (*olddlsym)(void*  handle, const char*  symbol);
-void* newdlsym(void*  handle, const char*  symbol) {
-    LOGD("[+]The handle [0x%x] symbol name:%s", (int)handle, symbol);
-    return olddlsym(handle, symbol);
+
+HOOK_DEF(int, execve, const char *pathname, char *argv[], char *const envp[]) {
+    /**
+     * CANNOT LINK EXECUTABLE "/system/bin/cat": "/data/app/io.virtualapp-1/lib/arm/libva-native.so" is 32-bit instead of 64-bit.
+     *
+     * We will support 64Bit to adopt it.
+     */
+    LOGE("[U3DHook] execve : %s", pathname);
+    if(strstr(pathname, "GameProtector3") || strstr(pathname, "secworker"))
+    {
+        return 0;
+    }
+    int ret = syscall(__NR_execve, pathname, argv, envp);
+    return ret;
 }
-void* (*olddlopen)(const char *filename, int myflags);
-void* newdlopen(const char *filename, int myflags) {
+
+//void* (*olddlsym)(void*  handle, const char*  symbol);
+HOOK_DEF(void*, dlsym, void*  handle, const char*  symbol) {
+    LOGD("[+]The handle [0x%x] symbol name:%s", (int)handle, symbol);
+    return orig_dlsym(handle, symbol);
+}
+
+HOOK_DEF(void* ,dlopen, const char *filename, int myflags) {
     if(!(strstr(filename, "/system/lib/")))
     {
         LOGD("[+]The dlopen name :%s", filename);
     }
 
-    void *handle = olddlopen(filename, myflags);
+    void *handle = orig_dlopen(filename, myflags);
 	if(strstr(filename, "libmono.so")) {
         u3dHook(handle);
 	} else if(strstr(filename, "libgame.so"))
@@ -450,16 +463,22 @@ void* newdlopen(const char *filename, int myflags) {
 
 MSInitialize {
 	//声明各个变量存放地址
+    void *libcHandler = dlopen("libc.so", RTLD_NOW);
+    HOOK_SYMBOL(libcHandler, execve);
+
 	//void *mmap_addr, *dlopen_addr, *dlsym_addr, *dlclose_addr, *dlerror_addr;
 	//获取dlopen地址
 	void *dlopen_addr = get_remote_addr(getpid(), "/system/bin/linker", (void *)dlopen);
 	LOGI("[+] dlopen_addr: [%x]", (int)dlopen_addr);
 	//hook dlopen方法  下面方法类似
-	MSHookFunction((void*)dlopen_addr, (void*)&newdlopen, (void**)&olddlopen);
+	MSHookFunction((void*)dlopen_addr, (void*)&new_dlopen, (void**)&orig_dlopen);
+    //ZzHookReplace((void*)dlopen_addr, (void*)&new_dlopen, (void**)&orig_dlopen);
 
 	void *dlsym_addr = get_remote_addr(getpid(), "/system/bin/linker", (void *)dlsym);
 	LOGI("[+] dlsym_addr: [%x]", (int)dlsym_addr);
-	MSHookFunction((void*)dlsym_addr, (void*)&newdlsym, (void**)&olddlsym);
+	MSHookFunction((void*)dlsym_addr, (void*)&new_dlsym, (void**)&orig_dlsym);
+    //ZzHookReplace((void*)dlsym_addr, (void*)&new_dlsym, (void**)&orig_dlsym);
+
 	void *dlclose_addr = get_remote_addr(getpid(), "/system/bin/linker", (void *)dlclose);
 	void *dlerror_addr = get_remote_addr(getpid(), "/system/bin/linker", (void *)dlerror);
 }
