@@ -89,54 +89,10 @@ HOOK_DEF(_MonoImage* ,mono_image_open_from_data_with_name, char *data, int data_
     if(strstr(name, "Assembly-CSharp.dll"))
     {
         LOGD("[U3DHook] Assembly-CSharp.dll ");
-        saveDllFile(ret->raw_data, ret->raw_data_len, getNextFilePath(".dll").c_str());
+        saveDllFile(ret->raw_data, ret->raw_data_len, getFilePath(".dll", name).c_str());
     }
 
 	return ret;
-}
-
-
-// hook do_mono_image_load(MonoImage *image, MonoImageOpenStatus *status, gboolean care_about_cli, gboolean care_about_pecoff);
-HOOK_DEF(_MonoImage* , do_mono_image_load,_MonoImage *image, MonoImageOpenStatus *status, gboolean care_about_cli, gboolean care_about_pecoff)
-{
-    LOGD("[U3DHook] call my_do_mono_image_load. image->moudle_name is %s.\n", image->module_name);
-
-    _MonoImage *ret = orig_do_mono_image_load(image, status, care_about_cli, care_about_pecoff);
-
-    if(strstr(image->assembly_name, "Assembly-CSharp.dll"))
-    {
-        saveFile(image->raw_data, image->raw_data_len, getNextFilePath(".dll").c_str());
-    }
-
-    LOGD("[U3DHook] do_mono_image_load ret is :%s.\n", ret);
-    return ret;
-
-}
-
-HOOK_DEF(_MonoImage*, mono_image_init, _MonoImage *image)
-{
-    LOGD("[U3DHook] call mono_image_init. image->assembly_name is %s.\n", image->assembly_name);
-
-    _MonoImage *ret = orig_mono_image_init(image);
-
-    if(strstr(image->assembly_name, "Assembly-CSharp.dll"))
-        saveFile(image->raw_data, image->raw_data_len, getNextFilePath(".dll").c_str());
-    LOGD("[U3DHook] mono_image_init ret is :%s.\n", ret);
-    return ret;
-
-}
-
-HOOK_DEF(_MonoImage*, register_image, _MonoImage *image)
-{
-    LOGD("[U3DHook] call register_image. image->raw_data is %s.image->assembly_name is %s.\n", image->raw_data, image->assembly_name);
-
-    _MonoImage *ret = orig_register_image(image);
-
-    if(strstr(image->assembly_name, "Assembly-CSharp.dll"))
-        saveFile(image->raw_data, image->raw_data_len, getNextFilePath(".dll").c_str());
-    LOGD("[U3DHook] mono_image_init ret is :%s.\n", ret);
-    return ret;
-
 }
 
 HOOK_DEF(void*, mono_class_from_name, _MonoImage *image, const char* name_space, const char *name)
@@ -247,18 +203,6 @@ bool saveDllFile(char *data, int data_len, const char *outFileName)
 //
 //    }
 
-//    void* mono_class_from_name = MSFindSymbol(image,"mono_class_from_name");
-//
-//    if (mono_class_from_name == NULL) {
-//        LOGI("[U3DHook] mono_class_from_name not found");
-//    } else {
-//        LOGI("[U3DHook] mono_class_from_name found, try to hook");
-//        MSHookFunction(mono_class_from_name,
-//                       (void *) &new_mono_class_from_name,
-//                       (void **) &orig_mono_class_from_name);
-//
-//    }
-
 //    void* mono_base;
 //    mono_base = get_module_base(-1, filename);
 
@@ -279,6 +223,7 @@ void u3dHook(void *Handle)
     HOOK_SYMBOL(Handle, mono_cli_rva_image_map);
 }
 
+// Hook Cocos2d
 string getFilePath(const char *fileExt, const char *name) {
     static std::string g_strDataPath;
     LOGD("[U3DHook] call getNextFilePath. name is %s.\n", name);
