@@ -21,6 +21,11 @@ using namespace std;
 #define LOG_TAG "GameFuck"
 #define MAX 1024 * 1024 * 10
 
+#define HOOK_SYMBOL(handle, func) hook_function(handle, #func, (void*) new_##func, (void**) &orig_##func)
+#define HOOK_DEF(ret, func, ...) \
+  ret (*orig_##func)(__VA_ARGS__); \
+  ret new_##func(__VA_ARGS__)
+
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
@@ -142,46 +147,17 @@ struct _MonoClass{
 
 };
 
-int32_t NewSeed(int32_t seed);
-void NewDec(int32_t seedVal, unsigned  char* buf, uint32_t len);
-
 typedef int gboolean;
-
-unsigned long getSoBase();
 
 void* get_module_base(int pid, const char* module_name);
 void* get_remote_addr(int target_pid, const char* module_name, void* local_addr);
 bool saveFile(const void* addr, int len, const char *outFileName);
 bool saveFile(const char *addr, int len, const char *outFileName);
 string getNextFilePath(const char *fileExt);
+
+void u3dHook(void *handle);
+string getFilePath(const char *fileExt, const char *name);
 bool saveDllFile(char *offset, int32_t data_len, const char *outFileName);
 
-
-// il2cpp
-
-typedef int32_t ImageIndex;
-typedef int32_t CustomAttributeIndex;
-
-
-struct Il2CppAssembly
-{
-    ImageIndex imageIndex;
-    CustomAttributeIndex customAttributeIndex;
-    int32_t referencedAssemblyStart;
-    int32_t referencedAssemblyCount;
-};
-
-struct Il2CppImage
-{
-    const char* name;
-
-    uint32_t typeCount;
-
-
-    uint32_t exportedTypeCount;
-
-
-    uint32_t token;
-};
 
 #endif //U3DHOOK_U3DHOOK_CY_H

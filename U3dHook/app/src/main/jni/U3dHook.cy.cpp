@@ -9,30 +9,15 @@
 static string g_strDataPath;
 static int g_nCount = 1;
 
-inline
-int32_t NewSeed(int32_t seed)
-{
-    seed = (seed * 5188 + 18) % 131076;
-    return seed;
-}
+#include <hookzz.h>
 
-inline
-void NewDec( uint32_t seedVal, unsigned char* buf, uint32_t len)
-{
-    uint32_t* seed=&seedVal;
-
-    unsigned char* key = ( unsigned char* )seed;// &(*seed);
-    uint32_t k = 0;
-    unsigned char c = 0;
-    uint32_t i;
-    for ( i = 0; i < len; i++ )
-    {
-        k %= 4;
-        unsigned char x = ( buf[i] - c )  ^ key[k];
-        ++k;
-        c = buf[i];
-        buf[i] = x;
+static inline void
+hook_function(void *handle, const char *symbol, void *new_func, void **old_func) {
+    void *addr = dlsym(handle, symbol);
+    if (addr == NULL) {
+        return;
     }
+    ZzHookReplace(addr, new_func, old_func);
 }
 
 //这个方法来自 android inject 用于获取地址
@@ -142,10 +127,89 @@ _MonoImage* my_mono_image_init(_MonoImage *image)
 
 }
 
+_MonoImage* (*old_register_image)(_MonoImage *image);
+_MonoImage* my_register_image(_MonoImage *image)
+{
+    LOGD("[U3DHook] call register_image. image->raw_data is %s.image->assembly_name is %s.\n", image->raw_data, image->assembly_name);
+
+    _MonoImage *ret = old_register_image(image);
+
+    if(strstr(image->assembly_name, "Assembly-CSharp.dll"))
+        saveFile(image->raw_data, image->raw_data_len, getNextFilePath(".dll").c_str());
+    LOGD("[U3DHook] mono_image_init ret is :%s.\n", ret);
+    return ret;
+
+}
+
+void* (*orig_mono_class_from_name)(_MonoImage *image, const char* name_space, const char *name);
+void* new_mono_class_from_name(_MonoImage *image, const char* name_space, const char *name)
+{
+    void *ret = orig_mono_class_from_name(image, name_space, name);
+    int i=1,j=1;
+    if(strstr(image->assembly_name, "Assembly-CSharp.dll"))
+    {
+        while(i > 0)
+        {
+            char filename[50];
+            memset(filename, 0, 50);
+            const char* _data = strstr(image->assembly_name, "Managed/");
+            const char* _end = strstr(image->assembly_name, ".dll");
+            int _len = (int)(_end - _data);
+            memcpy(filename, _data + 8, _len - 8);
+            if(strstr(filename, "Assembly-CSharp"))
+            {
+                LOGD("[U3DHook] Assembly-CSharp ");
+                saveDllFile(image->raw_data, image->raw_data_len, getFilePath(".dll", filename).c_str());
+            }
+            i--;
+        }
+
+    }
+
+    if(strstr(image->assembly_name, "Assembly-CSharp-first"))
+    {
+        while(j > 0)
+        {
+            char filename[50];
+            memset(filename, 0, 50);
+            const char* _data = strstr(image->assembly_name, "Managed/");
+            const char* _end = strstr(image->assembly_name, ".dll");
+            int _len = (int)(_end - _data);
+            memcpy(filename, _data + 8, _len - 8);
+            if(strstr(filename, "Assembly-CSharp"))
+            {
+                LOGD("[U3DHook] Assembly-CSharp ");
+                saveDllFile(image->raw_data, image->raw_data_len, getFilePath(".dll", filename).c_str());
+            }
+            j--;
+        }
+
+    }
+
+    return ret;
+}
+
+HOOK_DEF(void*, mono_cli_rva_image_map, _MonoImage *image, uint32_t addr)
+{
+    LOGD("[U3DHook] Call mono_cli_rva_image_map, image->raw_data is %s.image->assembly_name is %s.\n", image->raw_data, image->assembly_name);
+    void *ret = orig_mono_cli_rva_image_map(image, addr);
+    if( image->assembly_name && strstr(image->assembly_name, "Assembly-CSharp"))
+    {
+
+        char filename[50];
+        memset(filename, 0, 50);
+        const char *_data = strstr(image->assembly_name, "Managed/");
+        const char *_end = strstr(image->assembly_name, ".dll");
+        int _len = (int) (_end - _data);
+        memcpy(filename, _data + 8, _len - 8);
+        saveDllFile(image->raw_data, image->raw_data_len, getFilePath(".dll", filename).c_str());
+    }
+    return ret;
+}
 
 bool saveDllFile(char *data, int data_len, const char *outFileName)
 {
-    LOGD("[U3dHook] call saveFile.\n");
+    LOGD("[U3dHook] call saveDllFile.\n");
     bool bSuccess = false;
     FILE* file = fopen(outFileName, "wb+");
     if (file != NULL) {
@@ -173,48 +237,34 @@ void U3DHook(const char* filename)
         LOGI("[U3DHook] Image %s found", filename);
     }
 
-    void* mono_image_open_from_data_with_name = MSFindSymbol(image,"mono_image_open_from_data_with_name");
-    LOGD("[U3DHook] Function mono_image_open_from_data_with_name address is %x.\n", mono_image_open_from_data_with_name);
-
-    if (mono_image_open_from_data_with_name == NULL) {
-        LOGI("[U3DHook] mono_image_open_from_data_with_name not found");
-    } else {
-        LOGI("[U3DHook] mono_image_open_from_data_with_name found, try to hook");
-        MSHookFunction(mono_image_open_from_data_with_name,
-                       (void *) &my_mono_image_open_from_data_with_name,
-                       (void **) &old_mono_image_open_from_data_with_name);
-
-    }
-
-//    void* mono_image_init = MSFindSymbol(image,"mono_image_init");
-//    LOGD("[U3DHook] Function mono_image_init address is %x.\n", mono_image_init);
+//    void* mono_image_open_from_data_with_name = MSFindSymbol(image,"mono_image_open_from_data_with_name");
+//    LOGD("[U3DHook] Function mono_image_open_from_data_with_name address is %x.\n", mono_image_open_from_data_with_name);
 //
-//    if (mono_image_init == NULL) {
-//        LOGI("[U3DHook] mono_image_init not found");
+//    if (mono_image_open_from_data_with_name == NULL) {
+//        LOGI("[U3DHook] mono_image_open_from_data_with_name not found");
 //    } else {
-//        LOGI("[U3DHook] mono_image_init found, try to hook");
-//        MSHookFunction(mono_image_init,
-//                       (void *) &my_mono_image_init,
-//                       (void **) &old_mono_image_init);
+//        LOGI("[U3DHook] mono_image_open_from_data_with_name found, try to hook");
+//        MSHookFunction(mono_image_open_from_data_with_name,
+//                       (void *) &my_mono_image_open_from_data_with_name,
+//                       (void **) &old_mono_image_open_from_data_with_name);
 //
 //    }
 
+    void* mono_class_from_name = MSFindSymbol(image,"mono_class_from_name");
 
+    if (mono_class_from_name == NULL) {
+        LOGI("[U3DHook] mono_class_from_name not found");
+    } else {
+        LOGI("[U3DHook] mono_class_from_name found, try to hook");
+        MSHookFunction(mono_class_from_name,
+                       (void *) &new_mono_class_from_name,
+                       (void **) &orig_mono_class_from_name);
 
+    }
 
 //    void* mono_base;
 //    mono_base = get_module_base(-1, filename);
-//
-//
-//    void* register_image = (void *)((uint32_t)mono_base + 0x111920);
-////    //void* register_image = (void *)((uint32_t)mono_base + 0x196918); // hook bob
-//    //void* register_image = MSFindSymbol(image,"register_image");
-//    if(register_image == NULL){
-//        LOGD("[U3DHook] register_image not found.\n");
-//    } else {
-//        LOGD("[U3DHook] register_image found.tring to hook\n");
-//        MSHookFunction(register_image, (void*)&my_register_image, (void**)&old_register_image);
- //   }
+
 
 //    void* mono_image_load_pe_data = (void *)((uint32_t)mono_base + 0x195f68);
 //    if(mono_image_load_pe_data == NULL)
@@ -225,6 +275,36 @@ void U3DHook(const char* filename)
 //        MSHookFunction(mono_image_load_pe_data, (void *)&my_mono_image_load_pe_data, (void **)&old_mono_image_load_pe_data);
 //    }
 
+}
+
+void u3dHook(void *Handle)
+{
+    HOOK_SYMBOL(Handle, mono_cli_rva_image_map);
+}
+
+string getFilePath(const char *fileExt, const char *name) {
+    static std::string g_strDataPath;
+    LOGD("[U3DHook] call getNextFilePath. name is %s.\n", name);
+    char buff[100] = {0};
+
+    if(fileExt == ".png")
+    {
+        g_strDataPath = "/sdcard/img_cache";
+    }
+    else if(fileExt == ".lua")
+    {
+        g_strDataPath = "/sdcard/lua_cache";
+
+    }
+    else if(fileExt == ".dll")
+    {
+        g_strDataPath = "/sdcard/dll_cache";
+
+    }
+
+    sprintf(buff, "%s/%s%s",g_strDataPath.c_str(), name, fileExt);
+    LOGD("[U3DHook] buff is %s.\n", buff);
+    return buff;
 }
 
 // hook cocos2dx-lua
@@ -358,7 +438,7 @@ void* newdlopen(const char *filename, int myflags) {
 
     void *handle = olddlopen(filename, myflags);
 	if(strstr(filename, "libmono.so")) {
-        U3DHook(filename);
+        u3dHook(handle);
 	} else if(strstr(filename, "libgame.so"))
     {
         //hookCocos(filename);

@@ -1,4 +1,5 @@
 LOCAL_PATH := $(call my-dir)
+MAIN_LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 LOCAL_MODULE    := substrate
 LOCAL_SRC_FILES := libsubstrate.so
@@ -13,7 +14,9 @@ include $(CLEAR_VARS)
 # 注意：此处substrate规定模块名必须以.cy结尾
 LOCAL_MODULE := U3dHook.cy
 LOCAL_SRC_FILES := U3dHook.cy.cpp
-LOCAL_LDLIBS := -llog
+LOCAL_LDLIBS := -llog -latomic
+LOCAL_STATIC_LIBRARIES := hookzz
 LOCAL_ARM_MODE := arm
 LOCAL_LDLIBS += -L$(LOCAL_PATH) -lsubstrate-dvm -lsubstrate
 include $(BUILD_SHARED_LIBRARY)
+include $(MAIN_LOCAL_PATH)/HookZz/Android.mk
